@@ -1,0 +1,5 @@
+clipboard==0.0.4
+pyperclip==1.7.0
+PySide2==5.13.2
+shiboken2==5.13.2
+pytest==5.3.1

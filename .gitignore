@@ -1,0 +1,5 @@
+venv/*
+*.pyc
+.idea/*
+multipass/__pycache__/*.pyc
+.pytest_cache
