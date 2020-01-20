@@ -1,4 +1,5 @@
 venv/*
+env/*
 *.pyc
 .idea/*
 multipass/__pycache__/*.pyc
