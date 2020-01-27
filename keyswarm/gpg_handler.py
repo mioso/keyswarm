@@ -2,6 +2,35 @@ from os import path, walk
 from subprocess import PIPE, Popen, STDOUT
 from re import compile, match
 
+import logging
+
+def get_binary():
+    logger = logging.getLogger()
+    regex = compile('gpg \(GnuPG\) ([1-2])\..*')
+
+    gpg_subprocess = Popen(['gpg', '--version'], stdout=PIPE, stderr=None)
+    stdout, _ = gpg_subprocess.communicate()
+    version = stdout.decode('utf-8').splitlines()[0]
+
+    match = regex.match(version)
+    if match:
+        group = match.groups()[0]
+        logger.debug('binary: gpg, version: "%s"', group)
+        if group == "2":
+            return 'gpg'
+        if group == "1":
+            gpg2_subprocess = Popen(['gpg2', '--version'], stdout=PIPE, stderr=None)
+            stdout_2, _ = gpg2_subprocess.communicate()
+            version_2 = stdout_2.decode('utf-8').splitlines()[0]
+
+            m_2 = regex.match(version_2)
+            if m_2:
+                g_2 = m_2.groups()[0]
+                logger.debug('binary: gpg2, version: "%s"', group)
+                if g_2 == "2":
+                    return 'gpg2'
+    logging.getLogger().error('unkown gpg version')
+    exit(1)
 
 # noinspection DuplicatedCode
 def list_packages(path_to_file):
@@ -10,10 +39,10 @@ def list_packages(path_to_file):
     :param path_to_file: string - complete path to gog encrypted file
     :return: list of stings
     """
-    gpg_subprocess = Popen(['gpg', '--pinentry-mode', 'cancel', '--list-packets', path_to_file],
+    gpg_subprocess = Popen([get_binary(), '--pinentry-mode', 'cancel', '--list-packets', path_to_file],
                            stdout=PIPE,
                            stderr=STDOUT)
-    stdout, stderr = gpg_subprocess.communicate()
+    stdout, _ = gpg_subprocess.communicate()
     if match(b".*can't open.*", stdout):
         raise FileNotFoundError
     if match(b".*read error: Is a directory.*", stdout):
@@ -39,7 +68,7 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
     """
     if additional_parameter is None:
         additional_parameter = list()
-    gpg_command = ['gpg', '--quiet', *additional_parameter, '--decrypt', path_to_file]
+    gpg_command = [get_binary(), '--quiet', *additional_parameter, '--decrypt', path_to_file]
     if gpg_home:
         gpg_command = ['gpg', '--quiet', '--homedir', gpg_home, *additional_parameter, '--decrypt', path_to_file]
     gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=STDOUT)
@@ -74,9 +103,9 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     for recipient in list_of_recipients:
         cli_recipients.append('-r')
         cli_recipients.append(recipient)
-    gpg_command = ['gpg', '--encrypt', *cli_recipients]
+    gpg_command = [get_binary(), '--encrypt', *cli_recipients]
     if gpg_home:
-        gpg_command = ['gpg', '--quiet', '--homedir', gpg_home, '--encrypt', *cli_recipients]
+        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt', *cli_recipients]
     gpg_subprocess = Popen(gpg_command, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate(input=clear_text)
     if match(b'.*No such file or directory.*', stdout):
@@ -112,7 +141,7 @@ def list_available_keys(additional_parameter=None):
     """
     if additional_parameter is None:
         additional_parameter = list()
-    gpg_subprocess = Popen(['gpg', '--list-keys', *additional_parameter],
+    gpg_subprocess = Popen([get_binary(), '--list-keys', *additional_parameter],
                            stdout=PIPE,
                            stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate()
