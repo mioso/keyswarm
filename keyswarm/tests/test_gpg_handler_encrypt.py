@@ -1,7 +1,7 @@
 from tempfile import TemporaryDirectory
 from base64 import b64decode
 from os import path, system
-from multipass.gpg_handler import encrypt
+from keyswarm.gpg_handler import encrypt
 from subprocess import PIPE, Popen, run
 from pytest import raises
 from . import private_key

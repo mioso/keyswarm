@@ -3,7 +3,7 @@ from os import path
 from subprocess import run
 from base64 import b64decode
 from . import private_key
-from multipass.gpg_handler import list_available_keys
+from keyswarm.gpg_handler import list_available_keys
 
 
 def test_list_available_keys():

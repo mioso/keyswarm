@@ -1,4 +1,4 @@
-from multipass.gpg_handler import list_packages
+from keyswarm.gpg_handler import list_packages
 from os import path
 from inspect import getfile, currentframe
 from pytest import raises
