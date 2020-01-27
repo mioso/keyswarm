@@ -70,7 +70,7 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
         additional_parameter = list()
     gpg_command = [get_binary(), '--quiet', *additional_parameter, '--decrypt', path_to_file]
     if gpg_home:
-        gpg_command = ['gpg', '--quiet', '--homedir', gpg_home, *additional_parameter, '--decrypt', path_to_file]
+        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, *additional_parameter, '--decrypt', path_to_file]
     gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate()
     print(stdout)
