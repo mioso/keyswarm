@@ -32,4 +32,4 @@ def test_gpg_list_packages():
                                               hdJDAc3G3HnpmH6o5Tyq6lhalj7Wkb0E92F875Uuhv+9nt8MwVstIWpDxWAVay1QddDOTsng
                                               ULwTbFhBDdGMdrnUKE7hcQ==''')
             cyphertext_gpg_file.write(binary_cyphertext)
-        assert 'tester@test.com' in list_packages(path.join(tmpdir, 'cyphertext.gpg'))
+        assert 'ID 304C48B44BD634E0' in list_packages(path.join(tmpdir, 'cyphertext.gpg'))

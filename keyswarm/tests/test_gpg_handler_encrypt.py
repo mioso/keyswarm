@@ -1,7 +1,7 @@
 from tempfile import TemporaryDirectory
 from base64 import b64decode
 from os import path, system
-from keyswarm.gpg_handler import encrypt
+from keyswarm.gpg_handler import encrypt, get_binary
 from subprocess import PIPE, Popen, run
 from pytest import raises
 from . import private_key
@@ -11,17 +11,17 @@ def test_gpg_encrypt():
     with TemporaryDirectory() as tmpdirname:
         with open(file=path.join(tmpdirname, 'sec_key.asc'), mode='bw') as asc_file:
             asc_file.write(b64decode(private_key))
-        run(['gpg',
+        run([get_binary(),
              '--homedir', tmpdirname,
              '--batch',
              '--passphrase', 'test',
              '--import', path.join(tmpdirname, 'sec_key.asc')])
-        ownertrust_cmd = 'echo "80035649BDABA4EC6A02E7D36BF58E6E9B697F1C:6:" | gpg --homedir "{}" --import-ownertrust'
+        ownertrust_cmd = 'echo "80035649BDABA4EC6A02E7D36BF58E6E9B697F1C:6:" | %s --homedir "{}" --import-ownertrust' % (get_binary(),)
         system(ownertrust_cmd.format(tmpdirname))
         cyphertext = encrypt(clear_text=b'payload',
                              list_of_recipients=['tester@test.com'],
                              gpg_home=tmpdirname)
-        gpg_decrypt_command = ['gpg',
+        gpg_decrypt_command = [get_binary(),
                                '--homedir', tmpdirname,
                                '--pinentry-mode', 'loopback',
                                '--passphrase', 'test',

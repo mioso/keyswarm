@@ -1,7 +1,7 @@
 from os import path
 from base64 import b64decode
 from tempfile import TemporaryDirectory
-from keyswarm.gpg_handler import decrypt
+from keyswarm.gpg_handler import decrypt, get_binary
 from pytest import raises
 from subprocess import run
 from . import private_key, encrypted_file
@@ -39,7 +39,7 @@ def test_decrypt():
     with TemporaryDirectory() as tmpdirname:
         with open(file=path.join(tmpdirname, 'sec_key.asc'), mode='bw') as asc_file:
             asc_file.write(b64decode(private_key))
-        run(['gpg',
+        run([get_binary(),
              '--homedir', tmpdirname,
              '--batch',
              '--passphrase', 'test',

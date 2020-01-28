@@ -50,7 +50,8 @@ def list_packages(path_to_file):
     if match(b".*no valid OpenPGP data found.*", stdout):
         raise ValueError
     stdout = stdout.split(b'\n')
-    r = compile(b'.*<(.*\@.*)>.*')
+    # r = compile(b'.*<(.*\@.*)>.*')
+    r = compile(b'.*(ID [0-9A-Fa-f]{16}).*')
     list_of_packet_ids = []
     for line in stdout:
         if r.match(line):
@@ -103,9 +104,9 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     for recipient in list_of_recipients:
         cli_recipients.append('-r')
         cli_recipients.append(recipient)
-    gpg_command = [get_binary(), '--encrypt', *cli_recipients]
+    gpg_command = [get_binary(), '--encrypt', '--auto-key-locate', 'local', *cli_recipients]
     if gpg_home:
-        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt', *cli_recipients]
+        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt', '--auto-key-locate', 'local', *cli_recipients]
     gpg_subprocess = Popen(gpg_command, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate(input=clear_text)
     if match(b'.*No such file or directory.*', stdout):
