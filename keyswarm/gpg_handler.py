@@ -6,7 +6,7 @@ import logging
 
 def get_binary():
     logger = logging.getLogger()
-    regex = compile('gpg \(GnuPG\) ([1-2])\..*')
+    regex = compile(r'gpg \(GnuPG\) ([1-2])\..*')
 
     gpg_subprocess = Popen(['gpg', '--version'], stdout=PIPE, stderr=None)
     stdout, _ = gpg_subprocess.communicate()
