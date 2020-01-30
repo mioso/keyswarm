@@ -17,8 +17,8 @@ class MainWindow(QMainWindow):
     """
     def __init__(self):
         QMainWindow.__init__(self)
-        self.config = get_config(path.join(str(Path.home()), '.password-store', '.cfg'))
-        self.tree = PassUiFileSystemTree('/home/user/.password-store')
+        self.config = get_config(path.join(Path.home(), '.password-store', '.cfg'))
+        self.tree = PassUiFileSystemTree(path.join(Path.home(), '.password-store'))
         self.frame = QFrame()
         self.setCentralWidget(self.frame)
         self.horizontal_box_layout = QHBoxLayout(self.frame)
