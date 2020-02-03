@@ -10,6 +10,8 @@ from .pass_file_format_parser import PassFile
 from .ui_password_view import PasswordView
 from .generate_passwords import random_password
 
+import logging
+
 
 class MainWindow(QMainWindow):
     """
@@ -42,11 +44,11 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut('Ctrl+q')
         exit_action.triggered.connect(self.close)
         self.tool_bar.addAction(exit_action)
-        add_folder_action = QAction('Add Folder', self)
+        add_folder_action = QAction('Add &Folder', self)
         add_folder_action.setShortcut('Ctrl+f')
         add_folder_action.triggered.connect(self.add_folder)
         self.tool_bar.addAction(add_folder_action)
-        add_pass_action = QAction('Add Password', self)
+        add_pass_action = QAction('Add &Password', self)
         add_pass_action.setShortcut('Ctrl+p')
         add_pass_action.triggered.connect(self.add_password)
         self.tool_bar.addAction(add_pass_action)
@@ -129,24 +131,37 @@ class PasswordDialog(QDialog):
     An add password Dialog
     """
     def __init__(self, optional_fields=[]):
+        # Setup Dialog Window
         QDialog.__init__(self)
-        self.setMinimumHeight(120)
-        self.setMinimumWidth(380)
+        self.setMinimumHeight(360)
+        self.setMinimumWidth(480)
         self.setWindowTitle('Enter a Password')
         self.grid_layout = QGridLayout()
         self.setLayout(self.grid_layout)
+
+        # Setup Labels, Inputs and Buttons
         name_label = QLabel('Name:')
         pass_label = QLabel('Password:')
+        pass_confirm_label = QLabel('Confirm:')
         self.password_name_input = QLineEdit()
         self.grid_layout.addWidget(name_label, 0, 0)
         self.grid_layout.addWidget(self.password_name_input, 0, 1)
         self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.EchoMode(2))
-        generate_password_button = QPushButton('Gen')
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pass_confirm_input = QLineEdit()
+        self.pass_confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
+        view_password_button = QPushButton('&View')
+        view_password_button.clicked.connect(self.toggle_password_visibility)
+        self.layout().addWidget(view_password_button, 1, 2)
+        generate_password_button = QPushButton('&Generate')
         generate_password_button.clicked.connect(self.generate_password)
-        self.layout().addWidget(generate_password_button, 1, 2)
+        self.layout().addWidget(generate_password_button, 2, 2)
         self.grid_layout.addWidget(pass_label, 1, 0)
         self.grid_layout.addWidget(self.password_input, 1, 1)
+        self.grid_layout.addWidget(pass_confirm_label, 2, 0)
+        self.grid_layout.addWidget(self.pass_confirm_input, 2, 1)
+
+        # Setup Optional fields
         self.optional_fields = list()
         for field in optional_fields:
             self.__add_optional_field__(field)
@@ -154,20 +169,45 @@ class PasswordDialog(QDialog):
         self.comment_field = QTextEdit()
         self.layout().addWidget(comment_label, self.layout().rowCount() + 1, 0)
         self.layout().addWidget(self.comment_field, self.layout().rowCount(), 1)
+
+        # Setup Confirm Button
         self.confirm_button = QPushButton()
         self.confirm_button.setShortcut('Return')
-        self.confirm_button.setText('OK')
+        self.confirm_button.setText('&OK')
         self.grid_layout.addWidget(self.confirm_button, self.grid_layout.rowCount() + 1, 1)
         self.confirm_button.clicked.connect(self.confirm)
 
+    def toggle_password_visibility(self):
+        logger = logging.getLogger(__name__)
+        logger.debug(self.password_input.echoMode())
+        if self.password_input.echoMode() == QLineEdit.EchoMode.Password:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.pass_confirm_input.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+            self.pass_confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
+
     def generate_password(self):
-        self.password_input.setText(random_password())
+        logger = logging.getLogger(__name__)
+        password = random_password()
+        logger.debug('PassworfDialog.generate_password: password.__class__: %s', password.__class__)
+        logger.debug('PasswordDialog.generate_password: len(password): %s', len(password))
+        self.password_input.setText(password)
+        self.pass_confirm_input.setText(password)
 
     def confirm(self):
         """
         confirms the add password dialog
         :return: None
         """
+        logger = logging.getLogger(__name__)
+        if self.password_input.text() != self.pass_confirm_input.text():
+            logger.debug('PasswordDialog.confirm: password mismatch')
+            return
+        if self.password_name_input.text() == '':
+            logger.debug('PasswordDialog.confirm: empty name')
+            return
+        logger.debug('PasswordDialog.confirm: accept')
         self.accept()
 
     def __add_optional_field__(self, name):
