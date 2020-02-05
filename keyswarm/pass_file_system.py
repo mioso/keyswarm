@@ -17,7 +17,7 @@ def handle(root_path, name):
     logger.debug('handle: name: "%s"', name)
     if path.isfile(path.join(root_path, name)):
         logger.debug('handle: path is file')
-        return PassFile(gpg_file=path.join(root_path, name))
+        return PassFile(root_path=root_path, name=name)
     if path.isdir(path.join(root_path, name)) and path.exists(path.join(path.join(root_path, name), '.gpg-id')):
         logger.debug('handle: path is directory with .gpg-id')
         list_to_return = []

@@ -163,12 +163,14 @@ def list_available_keys(additional_parameter=None):
                            stderr=STDOUT)
     stdout, _ = gpg_subprocess.communicate()
     stdout = stdout.split(b'\n')
-    logger.debug('list_available_keys: stdout.split: %s', stdout)
-    r = compile(b'.*<(.*\@.*)>.*')
+    r = compile(b'^uid\s*\[.*\]\s(.*)$')
     list_of_packet_ids = []
     for line in stdout:
+        logger.debug('list_available_keys: line: "%s"', line)
         if r.match(line):
-            list_of_packet_ids.append(list(r.search(line).groups())[0].decode('utf-8'))
+            match = list(r.search(line).groups())[0].decode('utf-8')
+            logger.debug('list_available_keys: match: "%s"', match)
+            list_of_packet_ids.append(match)
     return list_of_packet_ids
 
 

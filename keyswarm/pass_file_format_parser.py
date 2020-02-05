@@ -1,4 +1,4 @@
-from re import search
+from re import search, compile
 from os import path
 from .gpg_handler import decrypt
 
@@ -7,7 +7,14 @@ class PassFile(object):
     """
     A representation of a pass file.
     """
-    def __init__(self, gpg_file=None):
+    def __init__(self, root_path=None, name=None):
+        try:
+            r = compile('^(.*)\.gpg$')
+            m = r.match(name)
+            self.name = m.group(1)
+        except:
+            self.name = name
+        gpg_file = path.join(root_path, name) if name and root_path else None
         self.file = gpg_file
         self.password = str()
         self.attributes = list()
