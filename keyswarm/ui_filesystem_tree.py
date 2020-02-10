@@ -1,4 +1,4 @@
-from PySide2.QtWidgets import QTreeWidget, QTreeWidgetItem
+from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
 from PySide2.QtCore import Qt
 from os import path, listdir
 from .pass_file_system import handle
@@ -21,6 +21,16 @@ class PassUIFileSystemItem(QTreeWidgetItem):
             self.setText(0, name)
         else:
             self.setText(0, file_system_path)
+        if self.isdir:
+            flags = self.flags()
+            new_flags = flags | Qt.ItemIsDragEnabled
+            new_flags |= Qt.ItemIsDropEnabled
+            self.setFlags(new_flags)
+        if self.isfile:
+            flags = self.flags()
+            new_flags = flags | Qt.ItemIsDragEnabled
+            new_flags &= ~Qt.ItemIsDropEnabled
+            self.setFlags(new_flags)
 
     def __repr__(self):
         return f'PassUIFileSystemItem(file_system_path={repr(self.file_system_path)}, name={repr(self.name)})'
@@ -33,6 +43,10 @@ class PassUiFileSystemTree(QTreeWidget):
         QTreeWidget.__init__(self)
         self.root = root
         self.setHeaderLabel('PasswordStore')
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDropIndicatorShown(True)
+        self.setDragEnabled(True)
         self.refresh_tree()
 
     def __repr__(self):
