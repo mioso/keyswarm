@@ -99,7 +99,12 @@ class PassUiFileSystemTree(QTreeWidget):
         handles ui item selection changed events
         :return: None
         """
-        value = handle(self.currentItem().file_system_path, self.currentItem().name)
+        value = None
+        try:
+            value = handle(self.currentItem().file_system_path, self.currentItem().name)
+        except ValueError as e:
+            self.window().user_list_group.hide()
+            self.window().password_browser_group.hide()
         if not value:
             return
         if self.currentItem().isfile:
