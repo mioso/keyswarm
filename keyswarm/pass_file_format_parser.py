@@ -30,6 +30,9 @@ class PassFile(object):
                 lines.pop(0)
             self.comments = '\n'.join(lines)
 
+    def __repr__(self):
+        return f'PassFile(root_path={repr(self.root_path)}, name={repr(self.name)})'
+
     def get_cleartext(self):
         """
         :return: string - cleartext data of a Password file

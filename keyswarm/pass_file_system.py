@@ -1,4 +1,5 @@
-from os import path, mkdir
+from os import path, mkdir, remove
+from shutil import move
 from pathlib import Path
 from .gpg_handler import encrypt, get_recipients_from_gpg_id
 from .pass_file_format_parser import PassFile
@@ -63,6 +64,64 @@ def create_password_file(path_to_folder, name, password_file):
                        path_to_file=path_to_file)
     else:
         return False
+
+
+def delete_password_file(path_to_folder, name):
+    """
+    deletes a .gpg file with the respective name in the respective folder
+    :param path_to_folder: string
+    :param name: string
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('delete_password_file: path_to_folder: "%s"', path_to_folder)
+    logger.debug('delete_password_file: name: "%s"', name)
+    file_path = path.join(path_to_folder, f'{name}.gpg')
+    try:
+        remove(file_path)
+    except IsADirectoryError:
+        logger.warning('delete_password_file: tried to remove directory: "%s"', file_path)
+    except FileNotFoundError:
+        logger.warning('delete_password_file: tried to remove non-existent file: "%s"', file_path)
+    except PermissionError:
+        logger.warning('delete_password_file: insufficient permission to remove file: "%s"', file_path)
+
+
+def move_password_file(path_to_old_folder, old_name, path_to_new_folder, new_name):
+    logger = logging.getLogger(__name__)
+    logger.debug('move_password_file: path_to_old_folder: "%s"', path_to_old_folder)
+    logger.debug('move_password_file: old_name: "%s"', old_name)
+    logger.debug('move_password_file: path_to_new_folder: "%s"', path_to_new_folder)
+    logger.debug('move_password_file: new_name: "%s"', new_name)
+    pass_file = handle_pass_file(path_to_old_folder, old_name)
+    if pass_file and pass_file.__class__ == PassFile:
+        change_password_file(path_to_old_folder=path_to_old_folder,
+                             old_name=old_name,
+                             path_to_new_folder=path_to_new_folder,
+                             new_name=new_name,
+                             password_file=pass_file)
+
+
+def change_password_file(path_to_old_folder, old_name, path_to_new_folder, new_name, password_file):
+    logger = logging.getLogger(__name__)
+    logger.debug('change_password_file: path_to_old_folder: "%s"', path_to_old_folder)
+    logger.debug('change_password_file: old_name: "%s"', old_name)
+    logger.debug('change_password_file: path_to_new_folder: "%s"', path_to_new_folder)
+    logger.debug('change_password_file: new_name: "%s"', new_name)
+
+    if path_to_old_folder == path_to_new_folder and old_name == new_name:
+        create_password_file(path_to_folder=path_to_old_folder,
+                             name=old_name,
+                             password_file=password_file)
+    else:
+        if path.exists(path.join(path_to_new_folder, new_name)):
+            logger.debug('change_password_file: new file already exists')
+            raise ValueError('duplicate password name')
+        else:
+            create_password_file(path_to_folder=path_to_new_folder,
+                                 name=new_name,
+                                 password_file=password_file)
+            delete_password_file(path_to_folder=path_to_old_folder,
+                                 name=old_name)
 
 
 def create_folder(path_to_folder, name):

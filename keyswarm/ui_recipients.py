@@ -15,6 +15,9 @@ class Recipient(QListWidgetItem):
         if not enabled:
             self.setFlags(Qt.ItemIsUserCheckable)
 
+    def __repr__(self):
+        return f'Recipient(name={repr(self.text())}, ischecked={repr(self.checkState())}, enabled={repr(self.flags(Qt.ItemIsUserCheckable))}'
+
 
 class RecipientList(QListWidget):
     def __init__(self):

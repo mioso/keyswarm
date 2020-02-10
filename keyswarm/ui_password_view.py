@@ -1,5 +1,6 @@
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
 from .pass_clipboard import copy
+from .pass_file_system import create_password_file, change_password_file
 from .ui_password_dialog import PasswordDialog
 import logging
 
@@ -21,6 +22,9 @@ class PasswordView(QGroupBox):
         if pass_file_object:
             self.load_pass_file(pass_file_object)
 
+    def __repr__(self):
+        return f'PasswordView(config={repr(self.config)}, tree={repr(self.tree)}, pass_file_object={repr(self.pass_file)})'
+
     def load_pass_file(self, pass_file_object):
         """
         populates the window with pass_file data
@@ -28,6 +32,8 @@ class PasswordView(QGroupBox):
         :return: None
         """
         self.clear()
+        if not pass_file_object:
+            return
         self.pass_file = pass_file_object
         password_field_label = QLabel('password')
         self.password_field = QLineEdit()
@@ -63,13 +69,25 @@ class PasswordView(QGroupBox):
         Displays an edit password dialog.
         """
         logger = logging.getLogger(__name__)
-        current_item = self.tree.currentItem()
-        if not current_item.isfile:
-            logger.warning('edit_password: invalid program flow: selection is not a regular file')
-            return
+        old_name = self.pass_file.name
+        logger.debug('edit_password: old_name: "%s"', old_name)
         pass_dialog = PasswordDialog.from_pass_file(self.pass_file)
         if pass_dialog.exec_():
-            pass
+            current_item = self.tree.currentItem()
+            if not current_item.isfile:
+                logger.warning('edit_password: invalid program flow: selection is not a regular file')
+                return
+            self.pass_file = pass_dialog.to_pass_file()
+            logger.debug('edit_password: self.pass_file.name: "%s"', self.pass_file.name)
+            change_password_file(path_to_old_folder=current_item.file_system_path,
+                                 old_name=old_name,
+                                 path_to_new_folder=current_item.file_system_path,
+                                 new_name=self.pass_file.name,
+                                 password_file=self.pass_file)
+            new_name = self.pass_file.name
+            self.clear()
+            self.tree.refresh_tree()
+            self.tree.select_item(current_item.file_system_path, new_name)
 
     def toggle_password_visibility(self):
         if self.password_field.echoMode() == QLineEdit.EchoMode.Password:

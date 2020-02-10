@@ -25,29 +25,23 @@ class PasswordDialog(QDialog):
         self.grid_layout = QGridLayout()
         self.setLayout(self.grid_layout)
 
-        # Setup Labels, Inputs and Buttons
+        # Setup mandatory Labels and Inputs
         name_label = QLabel('Name:')
-        pass_label = QLabel('Password:')
-        pass_confirm_label = QLabel('Confirm:')
-        self.password_name_input = QLineEdit()
         self.grid_layout.addWidget(name_label, 0, 0)
+        self.password_name_input = QLineEdit()
         self.grid_layout.addWidget(self.password_name_input, 0, 1)
+        pass_label = QLabel('Password:')
+        self.grid_layout.addWidget(pass_label, 1, 0)
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.grid_layout.addWidget(self.password_input, 1, 1)
+        pass_confirm_label = QLabel('Confirm:')
+        self.grid_layout.addWidget(pass_confirm_label, 2, 0)
         self.pass_confirm_input = QLineEdit()
         self.pass_confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
-        view_password_button = QPushButton('&View')
-        view_password_button.clicked.connect(self.toggle_password_visibility)
-        self.layout().addWidget(view_password_button, 1, 2)
-        generate_password_button = QPushButton('&Generate')
-        generate_password_button.clicked.connect(self.generate_password)
-        self.layout().addWidget(generate_password_button, 2, 2)
-        self.grid_layout.addWidget(pass_label, 1, 0)
-        self.grid_layout.addWidget(self.password_input, 1, 1)
-        self.grid_layout.addWidget(pass_confirm_label, 2, 0)
         self.grid_layout.addWidget(self.pass_confirm_input, 2, 1)
 
-        # Setup Optional fields
+        # Setup Optional Labels and Inputs
         self.optional_fields = list()
         for field in optional_fields:
             self.__add_optional_field__(field)
@@ -56,12 +50,21 @@ class PasswordDialog(QDialog):
         self.layout().addWidget(comment_label, self.layout().rowCount() + 1, 0)
         self.layout().addWidget(self.comment_field, self.layout().rowCount(), 1)
 
-        # Setup Confirm Button
+        # Setup Buttons
+        generate_password_button = QPushButton('&Generate')
+        generate_password_button.clicked.connect(self.generate_password)
+        self.layout().addWidget(generate_password_button, 2, 2)
+        view_password_button = QPushButton('&View')
+        view_password_button.clicked.connect(self.toggle_password_visibility)
+        self.layout().addWidget(view_password_button, 1, 2)
         self.confirm_button = QPushButton()
         self.confirm_button.setShortcut('Return')
         self.confirm_button.setText('&OK')
         self.grid_layout.addWidget(self.confirm_button, self.grid_layout.rowCount() + 1, 1)
         self.confirm_button.clicked.connect(self.confirm)
+
+    def __repr__(self):
+        return f'PasswordDialog(optional_fields={repr(self.optional_fields)}'
 
     def toggle_password_visibility(self):
         if self.password_input.echoMode() == QLineEdit.EchoMode.Password:
@@ -109,6 +112,7 @@ class PasswordDialog(QDialog):
 
     def to_pass_file(self):
         pass_file = PassFile()
+        pass_file.name = self.password_name_input.text()
         pass_file.password = self.password_input.text()
         for label_field, input_field in self.optional_fields:
             if input_field.text() is not None and input_field.text() != '':
