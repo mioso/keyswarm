@@ -1,9 +1,11 @@
 from os import path, walk
 from subprocess import PIPE, Popen, STDOUT
 from re import compile, match
+from functools import lru_cache
 
 import logging
 
+@lru_cache(maxsize=1)
 def get_binary():
     logger = logging.getLogger()
     regex = compile(r'gpg \(GnuPG\) ([1-2])\..*')
