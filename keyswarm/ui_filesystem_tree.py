@@ -1,7 +1,7 @@
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
 from PySide2.QtCore import Qt
 from os import path, listdir
-from .pass_file_system import handle
+from .pass_file_system import handle, move_password_file, move_password_folder
 from pathlib import PurePath
 from re import match
 import logging
@@ -34,6 +34,7 @@ class PassUIFileSystemItem(QTreeWidgetItem):
 
     def __repr__(self):
         return f'PassUIFileSystemItem(file_system_path={repr(self.file_system_path)}, name={repr(self.name)})'
+
 
 class PassUiFileSystemTree(QTreeWidget):
     """
@@ -129,3 +130,43 @@ class PassUiFileSystemTree(QTreeWidget):
             self.window().user_list_group.show()
             self.window().password_browser_group.hide()
             self.parentWidget().parentWidget().user_list.refresh_recipients(value)
+
+    def dropEvent(self, event):
+        logger = logging.getLogger(__name__)
+        logger.debug('PassUiFileSystemTree: dropEvent: event.pos(): %r', event.pos())
+        logger.debug('PassUiFileSystemTree: dropEvent: event.source(): %r', event.source())
+        logger.debug('PassUiFileSystemTree: dropEvent: event.proposedAction(): %r', event.proposedAction())
+        logger.debug('PassUiFileSystemTree: dropEvent: event.possibleActions(): %r', int(event.possibleActions()))
+        logger.debug('PassUiFileSystemTree: dropEvent: self.itemAt(event.pos()): %r', self.itemAt(event.pos()))
+        logger.debug('PassUiFileSystemTree: dropEvent: self.selectedItems(): %r', self.selectedItems())
+
+        try:
+            dragged_item = self.selectedItems()[0]
+            drop_target = self.itemAt(event.pos())
+            name = dragged_item.name.replace('.gpg', '')
+            source_folder = dragged_item.file_system_path
+            target_folder = drop_target.file_system_path if drop_target.isfile else str(PurePath(drop_target.file_system_path, drop_target.name))
+
+            logger.debug('PassUiFileSystemTree: dropEvent: dragged_item: %r', dragged_item)
+            logger.debug('PassUiFileSystemTree: dropEvent: drop_target: %r', drop_target)
+            logger.debug('PassUiFileSystemTree: dropEvent: name: %r', name)
+            logger.debug('PassUiFileSystemTree: dropEvent: source_folder: %r', source_folder)
+            logger.debug('PassUiFileSystemTree: dropEvent: target_folder: %r', target_folder)
+
+            if dragged_item.isfile:
+                move_password_file(path_to_old_folder=source_folder,
+                                   old_name=name,
+                                   path_to_new_folder=target_folder,
+                                   new_name=name)
+            else:
+                move_password_folder(path_to_old_parent_folder=source_folder,
+                                     old_name=name,
+                                     path_to_new_parent_folder=target_folder,
+                                     new_name=name)
+
+            self.refresh_tree()
+            self.select_item(target_folder, name)
+        except IndexError as e:
+            logger.warning('PassIoFileSystemTree: dropEvent: %r', e)
+        except ValueError as e:
+            logger.warning('PassIoFileSystemTree: dropEvent: %r', e)
