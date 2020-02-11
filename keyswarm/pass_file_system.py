@@ -152,6 +152,18 @@ def move_password_folder(path_to_old_parent_folder, old_name, path_to_new_parent
     logger.debug('move_password_folder: path_to_new_parent_folder: %r', path_to_new_parent_folder)
     logger.debug('move_password_folder: new_name: %r', new_name)
 
+    if not path.exists(path.join(path_to_old_parent_folder, old_name)):
+        raise FileNotFoundError('source folder does not exists')
+    if not path.exists(path_to_new_parent_folder):
+        raise FileNotFoundError('target parent folder does not exist')
+    if path.exists(path.join(path_to_new_parent_folder, new_name)):
+        raise FileExistsError('target folder already exists')
+    if path.exists(path.join(path_to_old_parent_folder, old_name, '.gpg-id')):
+        move(path.join(path_to_old_parent_folder, old_name),
+             path.join(path_to_new_parent_folder, new_name))
+    else:
+        pass
+
 
 def search_gpg_id_file(path_to_folder):
     """
