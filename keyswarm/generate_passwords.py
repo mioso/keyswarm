@@ -1,8 +1,8 @@
-from string import digits, ascii_lowercase, ascii_uppercase, punctuation
-from random import choice
+from string import digits, ascii_letters, punctuation
+from secrets import choice
 
 
-def random_password(size=50, alphabet=ascii_uppercase + ascii_lowercase + digits + punctuation):
+def random_password(size=50, alphabet=ascii_letters + digits + punctuation):
     """
     generate a random password
     :param size: int - password length
