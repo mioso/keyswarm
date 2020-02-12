@@ -1,4 +1,4 @@
-from os import path, mkdir, remove
+from os import path, mkdir, rmdir, remove, walk
 from shutil import move
 from pathlib import Path
 from .gpg_handler import encrypt, get_recipients_from_gpg_id
@@ -159,10 +159,27 @@ def move_password_folder(path_to_old_parent_folder, old_name, path_to_new_parent
     if path.exists(path.join(path_to_new_parent_folder, new_name)):
         raise FileExistsError('target folder already exists')
     if path.exists(path.join(path_to_old_parent_folder, old_name, '.gpg-id')):
+        logger.debug('move_password: .gpg-id found, moving folder without reencryption')
         move(path.join(path_to_old_parent_folder, old_name),
              path.join(path_to_new_parent_folder, new_name))
     else:
-        pass
+        create_folder(path_to_new_parent_folder, new_name)
+        for root, folders, files in walk(Path(path_to_old_parent_folder, old_name)):
+            logger.debug('move_password_folder: root: %r folders: %r files: %r', root, folders, files)
+            for file_ in files:
+                logger.debug('move_password_folder: file: %r', file_)
+                move_password_file(path_to_old_folder=path.join(path_to_old_parent_folder, old_name),
+                                   old_name=file_.replace('.gpg', ''),
+                                   path_to_new_folder=path.join(path_to_new_parent_folder, new_name),
+                                   new_name=file_.replace('.gpg', ''))
+            for folder in folders:
+                logger.debug('move_password_folder: folder: %r', folder)
+                move_password_folder(path_to_old_parent_folder=path.join(path_to_old_parent_folder, old_name),
+                                     old_name=folder,
+                                     path_to_new_parent_folder=path.join(path_to_new_parent_folder, new_name),
+                                     new_name=folder)
+            break
+        rmdir(path.join(path_to_old_parent_folder, old_name))
 
 
 def search_gpg_id_file(path_to_folder):
