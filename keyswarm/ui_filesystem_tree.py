@@ -1,10 +1,10 @@
+import logging
+from os import path, listdir
+from pathlib import PurePath
+
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
 from PySide2.QtCore import Qt
-from os import path, listdir
 from .pass_file_system import handle, move_password_file, move_password_folder
-from pathlib import PurePath
-from re import match
-import logging
 
 class PassUIFileSystemItem(QTreeWidgetItem):
     """
@@ -34,6 +34,9 @@ class PassUIFileSystemItem(QTreeWidgetItem):
 
     def __repr__(self):
         return f'PassUIFileSystemItem(file_system_path={repr(self.file_system_path)}, name={repr(self.name)})'
+
+    def __str__(self):
+        return self.__repr__()
 
 
 class PassUiFileSystemTree(QTreeWidget):
@@ -66,7 +69,7 @@ class PassUiFileSystemTree(QTreeWidget):
             node.setExpanded(True)
         file_system_path = path.join(node.file_system_path, node.name)
         for filesystem_item in listdir(file_system_path):
-            if filesystem_item != '.gpg-id' and filesystem_item != '.cfg':
+            if filesystem_item not in ('.gpg-id', '.cfg'):
                 child_node = PassUIFileSystemItem(file_system_path, filesystem_item)
                 child_node.setText(0, filesystem_item.replace('.gpg', ''))
                 node.addChild(child_node)
@@ -82,32 +85,38 @@ class PassUiFileSystemTree(QTreeWidget):
         logger.debug('select_item: self: %r', self)
         node = self.topLevelItem(0)
         logger.debug('select_item: node: %r', node)
-        path = PurePath(path_to_folder.replace(self.root, ''))
-        parts = path.parts
-        logger.debug('select_item: path: %r', path)
+        path_ = PurePath(path_to_folder.replace(self.root, ''))
+        parts = path_.parts
+        logger.debug('select_item: path_: %r', path_)
         logger.debug('select_item: parts: %r', parts)
-        if parts[0] == path.root:
+        if parts[0] == path_.root:
             parts = parts[1:]
         logger.debug('select_item: cleaned(parts): %r', parts)
+
+        node_found = False
         for part in parts:
             logger.debug('select_item: part: %r', part)
-            old_node = node
             for i in range(node.childCount()):
                 child = node.child(i)
                 logger.debug('select_item: node.child(%d): %r', i, child)
                 if child.name == part:
                     logger.debug('select_item: found child, descending')
+                    node_found = True
                     node = child
                     break
 
-        logger.debug('select_item: final node: %r', node)
-        for i in range(node.childCount()):
-            child = node.child(i)
-            logger.debug('select_item: node.child(%d): %r', i, child)
-            if child.name == f'{name}.gpg':
-                logger.debug('select_item: found entry, selecting')
-                self.setCurrentItem(child)
-                break
+        if node_found:
+            logger.debug('select_item: final node: %r', node)
+            for i in range(node.childCount()):
+                child = node.child(i)
+                logger.debug('select_item: node.child(%d): %r', i, child)
+                if child.name == f'{name}.gpg':
+                    logger.debug('select_item: found entry, selecting')
+                    self.setCurrentItem(child)
+                    return
+
+        logger.warning('select_item: tree does not match path: node not found')
+        self.setCurrentItem(self.topLevelItem(0))
 
     def on_item_selection_changed(self):
         """
@@ -117,7 +126,7 @@ class PassUiFileSystemTree(QTreeWidget):
         value = None
         try:
             value = handle(self.currentItem().file_system_path, self.currentItem().name)
-        except ValueError as e:
+        except ValueError:
             self.window().user_list_group.hide()
             self.window().password_browser_group.hide()
         if not value:
@@ -166,7 +175,7 @@ class PassUiFileSystemTree(QTreeWidget):
 
             self.refresh_tree()
             self.select_item(target_folder, name)
-        except IndexError as e:
-            logger.warning('PassIoFileSystemTree: dropEvent: %r', e)
-        except ValueError as e:
-            logger.warning('PassIoFileSystemTree: dropEvent: %r', e)
+        except IndexError as error:
+            logger.warning('PassIoFileSystemTree: dropEvent: %r', error)
+        except ValueError as error:
+            logger.warning('PassIoFileSystemTree: dropEvent: %r', error)
