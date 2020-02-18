@@ -1,23 +1,28 @@
-from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QTextEdit, QAction, QDialog,
-                               QLineEdit, QPushButton, QVBoxLayout, QGroupBox, QGridLayout, QLabel)
-from .ui_recipients import RecipientList
-from .ui_filesystem_tree import PassUiFileSystemTree
+"""
+This module provides the main application window and the main function.
+"""
+
 from os import path
 from pathlib import Path
+
+# pylint: disable=no-name-in-module
+from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QAction,
+                               QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
+                               QGridLayout, QLabel)
+from .ui_recipients import RecipientList
+from .ui_filesystem_tree import PassUiFileSystemTree
 from .pass_file_system import create_password_file, create_folder, get_config
 from .gpg_handler import write_gpg_id_file, recursive_reencrypt
-from .pass_file_format_parser import PassFile
 from .ui_password_view import PasswordView
-from .generate_passwords import random_password
 from .ui_password_dialog import PasswordDialog
-
-import logging
+from .search import PasswordSearch
 
 
 class MainWindow(QMainWindow):
     """
     Multipass Main Window
     """
+    # pylint: disable=too-many-instance-attributes
     def __init__(self):
         QMainWindow.__init__(self)
         self.config = get_config(path.join(Path.home(), '.password-store', '.cfg'))
@@ -41,18 +46,26 @@ class MainWindow(QMainWindow):
         self.user_list_group.hide()
         self.tool_bar = self.addToolBar('tools')
         self.tool_bar.setMovable(False)
+        #self.tool_bar.hide()
         exit_action = QAction('Exit', self)
         exit_action.setShortcut('Ctrl+q')
         exit_action.triggered.connect(self.close)
-        self.tool_bar.addAction(exit_action)
+        self.menuBar().addAction(exit_action)
         add_folder_action = QAction('Add &Folder', self)
         add_folder_action.setShortcut('Ctrl+f')
         add_folder_action.triggered.connect(self.add_folder)
-        self.tool_bar.addAction(add_folder_action)
+        self.menuBar().addAction(add_folder_action)
         add_pass_action = QAction('Add &Password', self)
         add_pass_action.setShortcut('Ctrl+p')
         add_pass_action.triggered.connect(self.add_password)
-        self.tool_bar.addAction(add_pass_action)
+        self.menuBar().addAction(add_pass_action)
+        self.tool_bar.search_bar = QLineEdit()
+        self.tool_bar.search_bar.setPlaceholderText('Search')
+        self.tool_bar.addWidget(self.tool_bar.search_bar)
+        button_create_index = QPushButton('Create Index')
+        button_create_index.clicked.connect(self.__create_new_index)
+        self.tool_bar.addWidget(button_create_index)
+
 
     def add_folder(self):
         """
@@ -94,10 +107,17 @@ class MainWindow(QMainWindow):
         :return: None
         """
         list_of_keys = self.user_list.get_checked_item_names()
-        folder_path = path.join(self.tree.currentItem().file_system_path, self.tree.currentItem().name)
+        folder_path = path.join(self.tree.currentItem().file_system_path,
+                                self.tree.currentItem().name)
         gpg_id_path = path.join(folder_path, '.gpg-id')
         write_gpg_id_file(gpg_id_path, list_of_keys)
         recursive_reencrypt(folder_path, list_of_keys)
+
+    def __create_new_index(self):
+        # TODO: remove this debug method
+        import logging
+        logging.getLogger(__name__).debug('__create_new_index')
+        PasswordSearch(self.tree)
 
 
 class FolderDialog(QDialog):
