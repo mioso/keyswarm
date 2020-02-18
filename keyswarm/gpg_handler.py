@@ -17,7 +17,7 @@ def get_binary():
     match = regex.match(version)
     if match:
         group = match.groups()[0]
-        logger.debug('get_binary: gpg, version: "%s"', group)
+        logger.debug('get_binary: gpg, version: %r', group)
         if group == "2":
             return 'gpg'
         if group == "1":
@@ -28,7 +28,7 @@ def get_binary():
             m_2 = regex.match(version_2)
             if m_2:
                 g_2 = m_2.groups()[0]
-                logger.debug('get_binary: gpg2, version: "%s"', g_2)
+                logger.debug('get_binary: gpg2, version: %r', g_2)
                 if g_2 == "2":
                     return 'gpg2'
     logging.getLogger().error('get_binary: unkown gpg version')
@@ -42,7 +42,7 @@ def list_packages(path_to_file):
     :return: list of stings
     """
     logger = logging.getLogger(__name__)
-    logger.debug('list_packages: path_to_file', path_to_file)
+    logger.debug('list_packages: path_to_file: %r', path_to_file)
     gpg_subprocess = Popen([get_binary(), '--pinentry-mode', 'cancel', '--list-packets', path_to_file],
                            stdout=PIPE,
                            stderr=STDOUT)
@@ -72,9 +72,9 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
     :return: utf-8 encoded string
     """
     logger = logging.getLogger(__name__)
-    logger.debug('decrypt: path_to_file: "%s"', path_to_file)
-    logger.debug('decrypt: gpg_home: "%s"', gpg_home)
-    logger.debug('decrypt: additional_parameter: "%s"', additional_parameter)
+    logger.debug('decrypt: path_to_file: %r', path_to_file)
+    logger.debug('decrypt: gpg_home: %r', gpg_home)
+    logger.debug('decrypt: additional_parameter: %r', additional_parameter)
     if additional_parameter is None:
         additional_parameter = list()
     gpg_command = [get_binary(), '--quiet', *additional_parameter, '--decrypt', path_to_file]
@@ -82,8 +82,8 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
         gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, *additional_parameter, '--decrypt', path_to_file]
     gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate()
-    logger.debug('decrypt: stdout: "%s"', stdout)
-    logger.debug('decrypt: stderr: "%s"', stderr)
+    logger.debug('decrypt: len(stdout): %r', len(stdout))
+    logger.debug('decrypt: stderr: %r', stderr)
     if match(b".*decryption failed: No secret key.*", stdout):
         raise ValueError('no secret key')
     if match(b".*can't open.*No such file or directory.*", stdout):
@@ -105,10 +105,10 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     :return: bytes of cyphertext or None
     """
     logger = logging.getLogger(__name__)
-    logger.debug('encrypt: len(clear_text): %d', len(clear_text))
-    logger.debug('encrypt: list_of_recipients: %s', list_of_recipients)
-    logger.debug('encrypt: path_to_file: %s', path_to_file)
-    logger.debug('encrypt: gpg_home: %s', gpg_home)
+    logger.debug('encrypt: len(clear_text): %r', len(clear_text))
+    logger.debug('encrypt: list_of_recipients: %r', list_of_recipients)
+    logger.debug('encrypt: path_to_file: %r', path_to_file)
+    logger.debug('encrypt: gpg_home: %r', gpg_home)
     if not list_of_recipients:
         raise ValueError('no recipients')
     if path_to_file and not path.exists(path.dirname(path_to_file)):
@@ -140,12 +140,12 @@ def get_recipients_from_gpg_id(path_to_gpg_id_file):
     :return: list of strings
     """
     logger = logging.getLogger(__name__)
-    logger.debug('get_recipients_from_gpg_id: path_to_gpg_id_file: "%s"', path_to_gpg_id_file)
+    logger.debug('get_recipients_from_gpg_id: path_to_gpg_id_file: %r', path_to_gpg_id_file)
     list_of_recipients = []
     with open(path_to_gpg_id_file, 'r') as file:
         for line in file.readlines():
             list_of_recipients.append(line.replace('\n', ''))
-    logger.debug('get_recipients_from_gpg_id: return: %s', list_of_recipients)
+    logger.debug('get_recipients_from_gpg_id: return: %r', list_of_recipients)
     return list_of_recipients
 
 
@@ -157,7 +157,7 @@ def list_available_keys(additional_parameter=None):
     :return: list of strings
     """
     logger = logging.getLogger(__name__)
-    logger.debug('list_available_keys: additional_parameter: "%s"', additional_parameter)
+    logger.debug('list_available_keys: additional_parameter: %r', additional_parameter)
     if additional_parameter is None:
         additional_parameter = list()
     gpg_subprocess = Popen([get_binary(), '--list-keys', *additional_parameter],
@@ -168,10 +168,10 @@ def list_available_keys(additional_parameter=None):
     r = compile(b'^uid\s*\[.*\]\s(.*)$')
     list_of_packet_ids = []
     for line in stdout:
-        logger.debug('list_available_keys: line: "%s"', line)
+        logger.debug('list_available_keys: line: %r', line)
         if r.match(line):
             match = list(r.search(line).groups())[0].decode('utf-8')
-            logger.debug('list_available_keys: match: "%s"', match)
+            logger.debug('list_available_keys: match: %r', match)
             list_of_packet_ids.append(match)
     return list_of_packet_ids
 
@@ -184,8 +184,8 @@ def write_gpg_id_file(path_to_file, list_of_gpg_ids):
     :return: None
     """
     logger = logging.getLogger(__name__)
-    logger.debug('write_gpg_id_file: path_to_file: "%s"', path_to_file)
-    logger.debug('write_gpg_id_file: list_of_gpg_ids: "%s"', list_of_gpg_ids)
+    logger.debug('write_gpg_id_file: path_to_file: %r', path_to_file)
+    logger.debug('write_gpg_id_file: list_of_gpg_ids: %r', list_of_gpg_ids)
     with open(path_to_file, 'w') as file:
         for key_id in list_of_gpg_ids:
             file.write('{key}\n'.format(key=key_id))
@@ -201,10 +201,10 @@ def recursive_reencrypt(path_to_folder, list_of_keys, gpg_home=None, additional_
     :return: None
     """
     logger = logging.getLogger(__name__)
-    logger.debug('recursive_reencrypt: path_to_folder: "%s"', path_to_folder)
-    logger.debug('recursive_reencrypt: list_of_keys: "%s"', list_of_keys)
-    logger.debug('recursive_reencrypt: gpg_home: "%s"', gpg_home)
-    logger.debug('recursive_reencrypt: additional_parameter: "%s"', additional_parameter)
+    logger.debug('recursive_reencrypt: path_to_folder: %r', path_to_folder)
+    logger.debug('recursive_reencrypt: list_of_keys: %r', list_of_keys)
+    logger.debug('recursive_reencrypt: gpg_home: %r', gpg_home)
+    logger.debug('recursive_reencrypt: additional_parameter: %r', additional_parameter)
     for root, dirs, files in walk(path_to_folder):
         if root == path_to_folder:
             for file in files:
