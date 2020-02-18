@@ -163,6 +163,8 @@ class PasswordDialog(QDialog):
     An add password Dialog
     """
     def __init__(self, optional_fields=[]):
+        logger = logging.getLogger(__name__)
+        logging.debug('PasswordDialog: optional_fields: %r', optional_fields)
         fixed_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
         # Setup Dialog Window
         QDialog.__init__(self)
@@ -192,8 +194,8 @@ class PasswordDialog(QDialog):
 
         # Setup Optional Labels and Inputs
         self.optional_fields = list()
-        for field in optional_fields:
-            self.__add_optional_field__(field)
+        for field, value in optional_fields:
+            self.__add_optional_field__(field, value)
         comment_label = QLabel('comments')
         self.comment_field = QTextEdit()
         self.layout().addWidget(comment_label, self.layout().rowCount() + 1, 0)
@@ -246,7 +248,7 @@ class PasswordDialog(QDialog):
         logger.debug('PasswordDialog.confirm: accept')
         self.accept()
 
-    def __add_optional_field__(self, name):
+    def __add_optional_field__(self, name, value=''):
         """
         adds an optional field to the Dialog
         :param name:
@@ -255,6 +257,7 @@ class PasswordDialog(QDialog):
         next_row = self.grid_layout.rowCount() + 1
         label = QLabel('{name}:'.format(name=name))
         input_field = QLineEdit()
+        input_field.setText(value)
         self.grid_layout.addWidget(label, next_row, 0)
         self.grid_layout.addWidget(input_field, next_row, 1)
         self.optional_fields.append((label, input_field))
@@ -269,6 +272,7 @@ class PasswordDialog(QDialog):
         pass_file.comments = self.comment_field.toPlainText()
         return pass_file
 
+    @staticmethod
     def from_pass_file(pass_file):
         dialog = PasswordDialog(pass_file.attributes)
         dialog.setWindowTitle('Edit Password')
