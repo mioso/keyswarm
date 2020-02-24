@@ -4,14 +4,19 @@ store based on password names and comment fields.
 """
 
 from os import PathLike
+import pickle
 import logging
 
-from whoosh.fields import Schema, ID, TEXT
+from whoosh.fields import Schema, TEXT
 from whoosh.filedb.filestore import RamStorage
+from whoosh.qparser import MultifieldParser, FuzzyTermPlugin, PhrasePlugin
+from whoosh.query.qcore import _NullQuery
+from whoosh.query.terms import Term, FuzzyTerm, Prefix, Wildcard
 
 from .pass_file_system import PassFile
 from .pass_file_system import handle
 from .ui_filesystem_tree import PassUiFileSystemTree
+from .gpg_handler import encrypt, decrypt
 
 
 class InitializationError(Exception):
@@ -57,7 +62,7 @@ class PasswordSearch:
 
     @staticmethod
     def __create_schema():
-        return Schema(name=ID(stored=True), path=ID(stored=True), comments=TEXT(stored=True))
+        return Schema(name=TEXT(stored=True), path=TEXT(stored=True), comments=TEXT(stored=True))
 
     def is_initialized(self):
         """
@@ -123,7 +128,7 @@ class PasswordSearch:
 
     def load_search_index(self, stored_index_path):
         """
-        initialize self with index from
+        initialize self with index from a gpg-encrypted file
         """
         logger = logging.getLogger(__name__)
         logger.debug('PasswordSearch.load_search_index: %r', stored_index_path)
@@ -131,4 +136,82 @@ class PasswordSearch:
             raise AlreadyInitializedError
         if not isinstance(stored_index_path, (str, PathLike)):
             raise ValueError('invalid input type')
-        #TODO
+        self.__storage = RamStorage()
+        self.__storage.files = pickle.loads(decrypt(stored_index_path, utf8=False))
+        self.__index = self.__storage.open_index()
+        with self.__index.searcher() as searcher:
+            # pylint: disable=no-member
+            logger.debug('load_search_index: %r', list(searcher.all_stored_fields()))
+
+    def store_search_index(self, stored_index_path):
+        """
+        store the index in a gpg-encrypted file
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug('PasswordSearch.store_search_index: stored_index_path: %r', stored_index_path)
+        recipients = ['user@example'] #TODO
+        encrypt(pickle.dumps(self.__storage.files), recipients, stored_index_path)
+
+    @staticmethod
+    def modify_query(query, glob_prefix, glob_suffix, fuzzy):
+        """
+        change all terms of a query according to flags
+        :param query: whoosh.query
+        :param glob_prefix: flag change term to Wildcard with `*` prepended
+        :param glob_suffix: flag change term to Prefix or wildcard with `*` appended
+        :param fuzzy: flag change term to FuzzyTerm with `~` appended
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug('modify_query: %r %r %r %r', query, glob_prefix, glob_suffix, fuzzy)
+        if isinstance(query, Term):
+            if glob_prefix:
+                if glob_suffix:
+                    logger.debug('modify_query: glob')
+                    return Wildcard(query.fieldname, f'*{query.text}*')
+                else:
+                    logger.debug('modify_query: prefix glob')
+                    return Wildcard(query.fieldname, f'*{query.text}')
+            elif glob_suffix:
+                logger.debug('modify_query: suffix glob')
+                return Prefix(query.fieldname, query.text)
+            elif fuzzy:
+                logger.debug('modify_query: fuzzy')
+                return FuzzyTerm(query.fieldname, query.text)
+            else:
+                logger.debug('modify_query: invalid flag permutation: %r', (glob_prefix, glob_suffix, fuzzy))
+                raise ValueError(f'invalid flag permutation: {(glob_prefix, glob_suffix, fuzzy)}')
+        else:
+            try:
+                query.subqueries = list(map(lambda a: PasswordSearch.modify_query(a, glob_prefix, glob_suffix, fuzzy), query.subqueries))
+                return query
+            except AttributeError:
+                logger.debug('modify_query: no subqueries')
+                return query
+
+    def search(self, raw_query, glob_prefix=False, glob_suffix=True, fuzzy=False):
+        logger = logging.getLogger(__name__)
+        logger.debug('search: raw_query: %r %r %r %r', raw_query, glob_prefix, glob_suffix, fuzzy)
+        if not self.is_initialized():
+            logger.debug('search: ERROR: not initialized')
+            raise NotInitializedError
+        if (glob_prefix or glob_suffix) and fuzzy:
+            logger.warning('search: auto-glob and auto-fuzzy are mutually exclusive')
+            raise ValueError('auto-glob and auto-fuzzy are mutually exclusive')
+
+        with self.__index.searcher() as searcher:
+            # pylint: disable=no-member
+            logger.debug('search: %r', list(searcher.all_stored_fields()))
+            parser = MultifieldParser(['name', 'path', 'comments'], self.__index.schema)
+            parser.add_plugin(FuzzyTermPlugin())
+            parser.add_plugin(PhrasePlugin())
+            query = parser.parse(raw_query)
+            logger.debug('search: query: %r', query)
+
+            if not isinstance(query, _NullQuery) and (glob_prefix or glob_suffix or fuzzy):
+                query = PasswordSearch.modify_query(query, glob_prefix, glob_suffix, fuzzy)
+                logger.debug('search: modified_query: %r', query)
+
+            results = searcher.search(query, limit=None)
+            logger.debug('search: results: %r', results)
+            logger.debug('search: results: %r', list(results))
+            return list(map(dict, results))

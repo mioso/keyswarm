@@ -2,7 +2,7 @@ import logging
 from os import path, listdir
 from pathlib import PurePath
 
-from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
+from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMainWindow
 from PySide2.QtCore import Qt
 from .pass_file_system import handle, move_password_file, move_password_folder
 
@@ -62,7 +62,12 @@ class PassUiFileSystemTree(QTreeWidget):
         :param node: Node to start with
         :return: None
         """
+        logger = logging.getLogger(__name__)
+        logger.debug('refresh_tree: %r', self)
+        logger.debug('refresh_tree: %r', self.window())
+        root_node = False
         if not node:
+            root_node = True
             node = PassUIFileSystemItem(self.root, '')
             self.invisibleRootItem().takeChildren()
             self.addTopLevelItem(node)
@@ -76,7 +81,11 @@ class PassUiFileSystemTree(QTreeWidget):
                 if child_node.isdir:
                     self.refresh_tree(child_node)
                     child_node.setExpanded(True)
-        self.sortItems(0, Qt.SortOrder(0))
+        if root_node:
+            self.sortItems(0, Qt.SortOrder(0))
+            window = self.window()
+            if isinstance(window, QMainWindow):
+                window.clear_search()
 
     def select_item(self, path_to_folder, name):
         logger = logging.getLogger(__name__)
@@ -132,13 +141,11 @@ class PassUiFileSystemTree(QTreeWidget):
         if not value:
             return
         if self.currentItem().isfile:
-            self.window().user_list_group.hide()
-            self.window().password_browser_group.show()
-            self.parentWidget().parentWidget().password_browser_group.load_pass_file(value)
+            self.window().right_content_frame.layout().setCurrentWidget(self.window().password_browser_group)
+            self.window().password_browser_group.load_pass_file(value)
         elif self.currentItem().isdir:
-            self.window().user_list_group.show()
-            self.window().password_browser_group.hide()
-            self.parentWidget().parentWidget().user_list.refresh_recipients(value)
+            self.window().right_content_frame.layout().setCurrentWidget(self.window().user_list_group)
+            self.window().user_list.refresh_recipients(value)
 
     def dropEvent(self, event):
         logger = logging.getLogger(__name__)
