@@ -63,7 +63,7 @@ def list_packages(path_to_file):
     return list_of_packet_ids
 
 
-def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
+def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
     """
     Decripts a gpg encrypted file and returns the cleartext
     :param path_to_file: complete path to gpg encrypted file
@@ -79,7 +79,9 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
         additional_parameter = list()
     gpg_command = [get_binary(), '--quiet', *additional_parameter, '--decrypt', path_to_file]
     if gpg_home:
-        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, *additional_parameter, '--decrypt', path_to_file]
+        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, *additional_parameter,
+                       '--decrypt', path_to_file]
+    logger.debug('decrypt: gpg_command: %r', gpg_command)
     gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate()
     logger.debug('decrypt: len(stdout): %r', len(stdout))
@@ -92,7 +94,9 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None):
         raise ValueError('file is a directory')
     if match(b".*no valid OpenPGP data found.*", stdout):
         raise ValueError('no valid openpgp data found')
-    return stdout.decode('utf-8')
+    if utf8:
+        return stdout.decode('utf-8')
+    return stdout
 
 
 def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
@@ -120,8 +124,11 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     gpg_command = [get_binary(), '--encrypt', '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
     if gpg_home:
         gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt', '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
+    logger.debug('encrypt: gpg_command: %r', gpg_command)
     gpg_subprocess = Popen(gpg_command, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate(input=clear_text)
+    logger.debug('encrypt: stdout: %r', stdout)
+    logger.debug('encrypt: stderr: %r', stderr)
     if match(b'.*No such file or directory.*', stdout):
         raise FileNotFoundError
     if match(b'.*No public key.*', stdout):
