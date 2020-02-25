@@ -10,10 +10,9 @@ import logging
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QAction,
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
-                               QGridLayout, QLabel, QMenu, QSplitter, QStackedLayout,
-                               QListWidget, QButtonGroup, QRadioButton)
+                               QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
+                               QButtonGroup, QRadioButton)
 from PySide2.QtGui import QIcon
-from PySide2.QtCore import QPoint
 
 from .ui_recipients import RecipientList
 from .ui_filesystem_tree import PassUiFileSystemTree
@@ -33,7 +32,7 @@ class MainWindow(QMainWindow):
         QMainWindow.__init__(self)
         self.config = get_config(Path('~/.password-store/.cfg').expanduser())
         self.tree = PassUiFileSystemTree(str(Path('~/.password-store').expanduser()))
-        self.__get_searcher(Path('~/.password-store-search-index.gpg').expanduser())
+        self.searcher = None
 
         exit_action = QAction('Exit', self)
         exit_action.setShortcut('Ctrl+q')
@@ -76,6 +75,11 @@ class MainWindow(QMainWindow):
         self.user_list_save_button.clicked.connect(self.reencrypt_files)
         self.user_list_group.layout().addWidget(self.user_list_save_button)
         self.right_content_frame.layout().addWidget(self.user_list_group)
+
+        self.__init_search__()
+
+    def __init_search__(self):
+        self.create_new_search_index()
 
         self.tool_bar = self.addToolBar('search')
         search_frame = QFrame()
@@ -124,25 +128,35 @@ class MainWindow(QMainWindow):
         self.tool_bar.search_options.radio_button_glob_suffix.setChecked(True)
         self.tool_bar.search_options.button_group.buttonToggled.connect(self.search)
 
-        #TODO: remove debug action
-        test_error_action = QAction('DEBUG: showError', self)
-        test_error_action.triggered.connect(self.__random_error)
-        self.menuBar().addAction(test_error_action)
-        test_reindex_action = QAction('DEBUG: reindex', self)
-        test_reindex_action.triggered.connect(self.__create_new_index)
-        self.menuBar().addAction(test_reindex_action)
-
     def add_folder(self):
         """
         Adds a sub folder to the current folder.
         :return: None
         """
-        folder_dialog = FolderDialog()
+        folder_dialog = QDialog()
+        folder_dialog.setFixedHeight(120)
+        folder_dialog.setFixedWidth(300)
+        folder_dialog.setWindowTitle('Enter a folder name')
+        grid_layout = QGridLayout()
+        folder_dialog.setLayout(grid_layout)
+        folder_name_input = QLineEdit()
+        input_label = QLabel('Folder Name:')
+        grid_layout.addWidget(input_label, 0, 0)
+        grid_layout.addWidget(folder_name_input, 0, 1)
+        confirm_button = QPushButton()
+        confirm_button.setShortcut('Return')
+        confirm_button.setText('OK')
+        grid_layout.addWidget(confirm_button, 1, 1)
+        confirm_button.clicked.connect(folder_dialog.accept)
+
         if folder_dialog.exec_():
-            folder_path = self.tree.currentItem().file_system_path
-            folder_name = folder_dialog.folder_name_input.text()
+            current_item = self.tree.currentItem()
+            folder_path = current_item.file_system_path if current_item.isfile else str(
+                Path(current_item.file_system_path, current_item.name))
+            folder_name = folder_name_input.text()
             create_folder(folder_path, folder_name)
             self.tree.refresh_tree()
+            self.tree.select_item(folder_path, folder_name)
 
     def add_password(self):
         """
@@ -179,6 +193,10 @@ class MainWindow(QMainWindow):
         recursive_reencrypt(folder_path, list_of_keys)
 
     def show_error(self, error_message):
+        """
+        display an error message to the user inside the main window
+        :param error_message: string displayed to the user
+        """
         logger = logging.getLogger(__name__)
         logger.debug('show_error: %r', error_message)
         error_widget = QFrame()
@@ -206,12 +224,20 @@ QPushButton {
         error_widget.layout().addWidget(error_confirm_button)
         self.main_frame.layout().insertWidget(0, error_widget)
 
-    def confirm_error(self, error_widget):
+    @staticmethod
+    def confirm_error(error_widget):
+        """
+        Confirm an error message, removing the widget displaying it
+        :param error_widget: QWidget outer most container of the error message
+        """
         logger = logging.getLogger(__name__)
         logger.debug('confirm_error: %r', error_widget)
         error_widget.setParent(None)
 
     def search(self):
+        """
+        search for the raw query written in the search bar and display possible results
+        """
         logger = logging.getLogger(__name__)
         if not self.search:
             logger.debug('search: no searcher')
@@ -239,18 +265,15 @@ QPushButton {
             self.tool_bar.search_results.hide()
 
     def clear_search(self):
+        """
+        clears the search bar and hides the result widget
+        """
         logger = logging.getLogger(__name__)
         logger.debug('clear_search')
         self.tool_bar.search_bar.setText('')
         self.tool_bar.search_results.clear()
         self.tool_bar.search_results.hide()
         self.tool_bar.search_results.dict = {}
-
-    def __get_searcher(self, stored_index_path):
-        try:
-            self.searcher = PasswordSearch(stored_index_path=stored_index_path)
-        except FileNotFoundError:
-            self.searcher = PasswordSearch(file_system_tree=self.tree)
 
     def _select_search_result(self, current, previous):
         logger = logging.getLogger(__name__)
@@ -260,49 +283,19 @@ QPushButton {
         result = self.tool_bar.search_results.dict[item_name]
         self.tree.select_item(result['path'], result['name'])
 
-    def __random_error(self):
-        #TODO: remove this debug method
-        from .generate_passwords import random_password
-        logging.getLogger(__name__).debug('__random_error')
-        self.show_error(random_password(64))
-
-    def __create_new_index(self):
-        # TODO: remove this debug method
-        logging.getLogger(__name__).debug('__create_new_index')
-        search = PasswordSearch(file_system_tree=self.tree)
-        search.store_search_index(Path('~/.password-store-search-index').expanduser())
-
-    def __load_index(self):
-        # TODO: remove this debug method
-        PasswordSearch(stored_index_path=Path('~/.password-store-search-index').expanduser())
-
-class FolderDialog(QDialog):
-    """
-    An add Folder Dialog.
-    """
-    def __init__(self):
-        QDialog.__init__(self)
-        self.setFixedHeight(120)
-        self.setFixedWidth(300)
-        self.setWindowTitle('Enter a folder name')
-        self.grid_layout = QGridLayout()
-        self.setLayout(self.grid_layout)
-        self.folder_name_input = QLineEdit()
-        input_label = QLabel('Folder Name:')
-        self.grid_layout.addWidget(input_label, 0, 0)
-        self.grid_layout.addWidget(self.folder_name_input, 0, 1)
-        self.confirm_button = QPushButton()
-        self.confirm_button.setShortcut('Return')
-        self.confirm_button.setText('OK')
-        self.grid_layout.addWidget(self.confirm_button, 1, 1)
-        self.confirm_button.clicked.connect(self.accept)
+    def create_new_search_index(self):
+        """
+        create a new search index from the password tree
+        """
+        logging.getLogger(__name__).debug('create_new_search_index')
+        self.searcher = PasswordSearch(file_system_tree=self.tree)
 
 
 def main():
     app = QApplication()
     window = MainWindow()
     window.setWindowTitle('Keyswarm')
-    window.resize(640, 480)
+    window.resize(800, 600)
     window.show()
     app.exec_()
 

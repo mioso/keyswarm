@@ -119,7 +119,8 @@ class PassUiFileSystemTree(QTreeWidget):
             for i in range(node.childCount()):
                 child = node.child(i)
                 logger.debug('select_item: node.child(%d): %r', i, child)
-                if child.name == f'{name}.gpg':
+                if (child.isfile and child.name == f'{name}.gpg') or (
+                        child.isdir and child.name == name):
                     logger.debug('select_item: found entry, selecting')
                     self.setCurrentItem(child)
                     return
