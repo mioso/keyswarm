@@ -1,7 +1,13 @@
+"""
+This module provides a pass file system tree as extension of a QTreeWidget.
+No separation of ui and data so far.
+"""
+
 import logging
 from os import path, listdir
 from pathlib import PurePath
 
+# pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMainWindow
 from PySide2.QtCore import Qt
 from .pass_file_system import handle, move_password_file, move_password_folder
@@ -33,7 +39,8 @@ class PassUIFileSystemItem(QTreeWidgetItem):
             self.setFlags(new_flags)
 
     def __repr__(self):
-        return f'PassUIFileSystemItem(file_system_path={repr(self.file_system_path)}, name={repr(self.name)})'
+        return (f'PassUIFileSystemItem(file_system_path={repr(self.file_system_path)}, '
+                f'name={repr(self.name)})')
 
     def __str__(self):
         return self.__repr__()
@@ -88,6 +95,11 @@ class PassUiFileSystemTree(QTreeWidget):
                 window.clear_search()
 
     def select_item(self, path_to_folder, name):
+        """
+        select a specific item in the tree
+        :param path_to_folder: PathLike path to the folder containing the item
+        :param name: string name of the item
+        """
         logger = logging.getLogger(__name__)
         logger.debug('select_item: path_to_folder: %r', path_to_folder)
         logger.debug('select_item: name: %r', name)
@@ -133,36 +145,52 @@ class PassUiFileSystemTree(QTreeWidget):
         handles ui item selection changed events
         :return: None
         """
+        logger = logging.getLogger(__name__)
         value = None
         try:
             value = handle(self.currentItem().file_system_path, self.currentItem().name)
+            logger.debug('on_item_selection_changed: value: %r', value)
         except ValueError:
             self.window().user_list_group.hide()
             self.window().password_browser_group.hide()
-        if not value:
+        if value is None:
             return
         if self.currentItem().isfile:
-            self.window().right_content_frame.layout().setCurrentWidget(self.window().password_browser_group)
+            self.window().right_content_frame.layout().setCurrentWidget(
+                self.window().password_browser_group)
             self.window().password_browser_group.load_pass_file(value)
         elif self.currentItem().isdir:
-            self.window().right_content_frame.layout().setCurrentWidget(self.window().user_list_group)
+            self.window().right_content_frame.layout().setCurrentWidget(
+                self.window().user_list_group)
             self.window().user_list.refresh_recipients(value)
+        else:
+            logger.warning('on_item_selection_changed: selection is neither file nor directory: %r',
+                           self.currentItem())
 
+    # pylint: disable=invalid-name
     def dropEvent(self, event):
+        """
+        Qt drop event handler
+        """
         logger = logging.getLogger(__name__)
         logger.debug('PassUiFileSystemTree: dropEvent: event.pos(): %r', event.pos())
         logger.debug('PassUiFileSystemTree: dropEvent: event.source(): %r', event.source())
-        logger.debug('PassUiFileSystemTree: dropEvent: event.proposedAction(): %r', event.proposedAction())
-        logger.debug('PassUiFileSystemTree: dropEvent: event.possibleActions(): %r', int(event.possibleActions()))
-        logger.debug('PassUiFileSystemTree: dropEvent: self.itemAt(event.pos()): %r', self.itemAt(event.pos()))
-        logger.debug('PassUiFileSystemTree: dropEvent: self.selectedItems(): %r', self.selectedItems())
+        logger.debug('PassUiFileSystemTree: dropEvent: event.proposedAction(): %r',
+                     event.proposedAction())
+        logger.debug('PassUiFileSystemTree: dropEvent: event.possibleActions(): %r',
+                     int(event.possibleActions()))
+        logger.debug('PassUiFileSystemTree: dropEvent: self.itemAt(event.pos()): %r',
+                     self.itemAt(event.pos()))
+        logger.debug('PassUiFileSystemTree: dropEvent: self.selectedItems(): %r',
+                     self.selectedItems())
 
         try:
             dragged_item = self.selectedItems()[0]
             drop_target = self.itemAt(event.pos())
             name = dragged_item.name.replace('.gpg', '')
             source_folder = dragged_item.file_system_path
-            target_folder = drop_target.file_system_path if drop_target.isfile else str(PurePath(drop_target.file_system_path, drop_target.name))
+            target_folder = drop_target.file_system_path if drop_target.isfile else str(
+                PurePath(drop_target.file_system_path, drop_target.name))
 
             logger.debug('PassUiFileSystemTree: dropEvent: dragged_item: %r', dragged_item)
             logger.debug('PassUiFileSystemTree: dropEvent: drop_target: %r', drop_target)

@@ -1,14 +1,28 @@
-from os import path, walk
-from subprocess import PIPE, Popen, STDOUT
-from re import compile, match
-from functools import lru_cache
+"""
+this module interacts with the gpg binary and provides file encryption and decryption
+as well as utility function like key listing and reencryption of a file tree.
+"""
 
+from functools import lru_cache
 import logging
+from os import path, walk
+from re import compile as re_compile, match as re_match
+from subprocess import PIPE, Popen, STDOUT
+from sys import exit as sys_exit
+
 
 @lru_cache(maxsize=1)
 def get_binary():
+    """
+    check the gpg binaty for its version
+    if the version is 1 try the gpg2 binary
+    exits the application if neither binary is present
+    or reports to be version 2
+
+    :return: the binary which returned version 2
+    """
     logger = logging.getLogger()
-    regex = compile(r'gpg \(GnuPG\) ([1-2])\..*')
+    regex = re_compile(r'gpg \(GnuPG\) ([1-2])\..*')
 
     gpg_subprocess = Popen(['gpg', '--version'], stdout=PIPE, stderr=None)
     stdout, _ = gpg_subprocess.communicate()
@@ -32,7 +46,8 @@ def get_binary():
                 if g_2 == "2":
                     return 'gpg2'
     logging.getLogger().error('get_binary: unkown gpg version')
-    exit(1)
+    sys_exit(1)
+
 
 # noinspection DuplicatedCode
 def list_packages(path_to_file):
@@ -43,23 +58,22 @@ def list_packages(path_to_file):
     """
     logger = logging.getLogger(__name__)
     logger.debug('list_packages: path_to_file: %r', path_to_file)
-    gpg_subprocess = Popen([get_binary(), '--pinentry-mode', 'cancel', '--list-packets', path_to_file],
-                           stdout=PIPE,
-                           stderr=STDOUT)
+    gpg_subprocess = Popen([get_binary(), '--pinentry-mode', 'cancel', '--list-packets',
+                            path_to_file], stdout=PIPE, stderr=STDOUT)
     stdout, _ = gpg_subprocess.communicate()
-    if match(b".*can't open.*", stdout):
+    if re_match(b".*can't open.*", stdout):
         raise FileNotFoundError('can\'t open file')
-    if match(b".*read error: Is a directory.*", stdout):
+    if re_match(b".*read error: Is a directory.*", stdout):
         raise ValueError('file is a directory')
-    if match(b".*no valid OpenPGP data found.*", stdout):
+    if re_match(b".*no valid OpenPGP data found.*", stdout):
         raise ValueError('no valid openpgp data found')
     stdout = stdout.split(b'\n')
-    # r = compile(b'.*<(.*\@.*)>.*')
-    r = compile(b'.*(ID [0-9A-Fa-f]{16}).*')
+    # regex = re_compile(b'.*<(.*\@.*)>.*')
+    regex = re_compile(b'.*(ID [0-9A-Fa-f]{16}).*')
     list_of_packet_ids = []
     for line in stdout:
-        if r.match(line):
-            list_of_packet_ids.append(list(r.search(line).groups())[0].decode('utf-8'))
+        if regex.match(line):
+            list_of_packet_ids.append(list(regex.search(line).groups())[0].decode('utf-8'))
     return list_of_packet_ids
 
 
@@ -86,13 +100,13 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
     stdout, stderr = gpg_subprocess.communicate()
     logger.debug('decrypt: len(stdout): %r', len(stdout))
     logger.debug('decrypt: stderr: %r', stderr)
-    if match(b".*decryption failed: No secret key.*", stdout):
+    if re_match(b".*decryption failed: No secret key.*", stdout):
         raise ValueError('no secret key')
-    if match(b".*can't open.*No such file or directory.*", stdout):
+    if re_match(b".*can't open.*No such file or directory.*", stdout):
         raise FileNotFoundError
-    if match(b".*read error: Is a directory.*", stdout):
+    if re_match(b".*read error: Is a directory.*", stdout):
         raise ValueError('file is a directory')
-    if match(b".*no valid OpenPGP data found.*", stdout):
+    if re_match(b".*no valid OpenPGP data found.*", stdout):
         raise ValueError('no valid openpgp data found')
     if utf8:
         return stdout.decode('utf-8')
@@ -121,17 +135,19 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     for recipient in list_of_recipients:
         cli_recipients.append('-r')
         cli_recipients.append(recipient)
-    gpg_command = [get_binary(), '--encrypt', '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
+    gpg_command = [get_binary(), '--encrypt', '--auto-key-locate', 'local', '--trust-model',
+                   'always', *cli_recipients]
     if gpg_home:
-        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt', '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
+        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt',
+                       '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
     logger.debug('encrypt: gpg_command: %r', gpg_command)
     gpg_subprocess = Popen(gpg_command, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
     stdout, stderr = gpg_subprocess.communicate(input=clear_text)
     logger.debug('encrypt: stdout: %r', stdout)
     logger.debug('encrypt: stderr: %r', stderr)
-    if match(b'.*No such file or directory.*', stdout):
+    if re_match(b'.*No such file or directory.*', stdout):
         raise FileNotFoundError
-    if match(b'.*No public key.*', stdout):
+    if re_match(b'.*No public key.*', stdout):
         raise ValueError('no public key')
     if path_to_file:
         with open(path_to_file, 'bw') as file:
@@ -157,7 +173,7 @@ def get_recipients_from_gpg_id(path_to_gpg_id_file):
 
 
 # noinspection DuplicatedCode
-def list_available_keys(additional_parameter=None):
+def list_available_keys(additional_parameter=None, get_secret_keys=False):
     """
     lists all to gpg binary available public keys
     :param additional_parameter: do not use this; for testing only
@@ -166,18 +182,21 @@ def list_available_keys(additional_parameter=None):
     logger = logging.getLogger(__name__)
     logger.debug('list_available_keys: additional_parameter: %r', additional_parameter)
     if additional_parameter is None:
-        additional_parameter = list()
-    gpg_subprocess = Popen([get_binary(), '--list-keys', *additional_parameter],
+        additional_parameter = []
+    command = '--list-keys' if not get_secret_keys else '--list-secret-keys'
+    gpg_subprocess = Popen([get_binary(), command, *additional_parameter],
                            stdout=PIPE,
                            stderr=STDOUT)
-    stdout, _ = gpg_subprocess.communicate()
+    stdout, stderr = gpg_subprocess.communicate()
+    logger.debug('list_available_keys: stdout: %r', stdout)
+    logger.debug('list_available_keys: stderr: %r', stderr)
     stdout = stdout.split(b'\n')
-    r = compile(b'^uid\s*\[.*\]\s(.*)$')
+    regex = re_compile(rb'^uid\s*\[.*\]\s(.*)$')
     list_of_packet_ids = []
     for line in stdout:
         logger.debug('list_available_keys: line: %r', line)
-        if r.match(line):
-            match = list(r.search(line).groups())[0].decode('utf-8')
+        if regex.match(line):
+            match = list(regex.search(line).groups())[0].decode('utf-8')
             logger.debug('list_available_keys: match: %r', match)
             list_of_packet_ids.append(match)
     return list_of_packet_ids
@@ -212,12 +231,13 @@ def recursive_reencrypt(path_to_folder, list_of_keys, gpg_home=None, additional_
     logger.debug('recursive_reencrypt: list_of_keys: %r', list_of_keys)
     logger.debug('recursive_reencrypt: gpg_home: %r', gpg_home)
     logger.debug('recursive_reencrypt: additional_parameter: %r', additional_parameter)
-    for root, dirs, files in walk(path_to_folder):
+    for root, _, files in walk(path_to_folder):
         if root == path_to_folder:
             for file in files:
                 if file[-4:] == '.gpg':
                     file_path = path.join(root, file)
-                    cleartext = decrypt(file_path, gpg_home=gpg_home, additional_parameter=additional_parameter)
+                    cleartext = decrypt(file_path, gpg_home=gpg_home,
+                                        additional_parameter=additional_parameter)
                     encrypt(clear_text=cleartext.encode(),
                             list_of_recipients=list_of_keys,
                             path_to_file=file_path,

@@ -176,21 +176,47 @@ class MainWindow(QMainWindow):
             else:
                 password_dir = current_item_parent
             password_file = pass_dialog.to_pass_file()
-            create_password_file(path_to_folder=password_dir,
-                                 name=pass_dialog.password_name_input.text(),
-                                 password_file=password_file)
-            self.tree.refresh_tree()
+            try:
+                create_password_file(path_to_folder=password_dir,
+                                     name=pass_dialog.password_name_input.text(),
+                                     password_file=password_file)
+
+                self.tree.refresh_tree()
+            except ValueError:
+                self.show_missing_key_error()
 
     def reencrypt_files(self):
         """
         :return: None
         """
+        logger = logging.getLogger(__name__)
+
         list_of_keys = self.user_list.get_checked_item_names()
+        logger.debug('reencrypt_files: list_of_keys: %r', list_of_keys)
+        if not list_of_keys:
+            logger.debug('no recipients selected')
+            self.show_error('no recipients selected')
+            return
+
         folder_path = path.join(self.tree.currentItem().file_system_path,
                                 self.tree.currentItem().name)
+        logger.debug('reencrypt_files: folder_path: %r', folder_path)
+
         gpg_id_path = path.join(folder_path, '.gpg-id')
-        write_gpg_id_file(gpg_id_path, list_of_keys)
-        recursive_reencrypt(folder_path, list_of_keys)
+        logger.debug('reencrypt_files: gpg_id_path: %r', gpg_id_path)
+
+        try:
+            recursive_reencrypt(folder_path, list_of_keys)
+            write_gpg_id_file(gpg_id_path, list_of_keys)
+        except ValueError:
+            self.show_missing_key_error()
+
+    def show_missing_key_error(self):
+        """
+        show the error message for encrypting to an unavailable key
+        """
+        self.show_error(("At least one public key is not available. "
+                         "Import public key or manually remove it."))
 
     def show_error(self, error_message):
         """

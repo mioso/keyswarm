@@ -1,8 +1,16 @@
-from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
-from .pass_clipboard import copy
-from .pass_file_system import create_password_file, change_password_file
-from .ui_password_dialog import PasswordDialog
+"""
+this module provides a password information widget to view and edit passwords
+and their metadata and to copy the password to clipboard
+"""
+
 import logging
+
+# pylint: disable=no-name-in-module
+from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
+
+from .pass_clipboard import copy
+from .pass_file_system import change_password_file
+from .ui_password_dialog import PasswordDialog
 
 
 class PasswordView(QGroupBox):
@@ -23,7 +31,8 @@ class PasswordView(QGroupBox):
             self.load_pass_file(pass_file_object)
 
     def __repr__(self):
-        return f'PasswordView(config={repr(self.config)}, tree={repr(self.tree)}, pass_file_object={repr(self.pass_file)})'
+        return (f'PasswordView(config={repr(self.config)}, tree={repr(self.tree)}, '
+                f'pass_file_object={repr(self.pass_file)})')
 
     def load_pass_file(self, pass_file_object):
         """
@@ -75,15 +84,20 @@ class PasswordView(QGroupBox):
         if pass_dialog.exec_():
             current_item = self.tree.currentItem()
             if not current_item.isfile:
-                logger.warning('edit_password: invalid program flow: selection is not a regular file')
+                logger.warning('edit_password: invalid program flow: '
+                               'selection is not a regular file')
                 return
             self.pass_file = pass_dialog.to_pass_file()
             logger.debug('edit_password: self.pass_file.name: "%s"', self.pass_file.name)
-            change_password_file(path_to_old_folder=current_item.file_system_path,
-                                 old_name=old_name,
-                                 path_to_new_folder=current_item.file_system_path,
-                                 new_name=self.pass_file.name,
-                                 password_file=self.pass_file)
+            try:
+                change_password_file(path_to_old_folder=current_item.file_system_path,
+                                     old_name=old_name,
+                                     path_to_new_folder=current_item.file_system_path,
+                                     new_name=self.pass_file.name,
+                                     password_file=self.pass_file)
+            except ValueError:
+                self.window().show_missing_key_error()
+                return
             new_name = self.pass_file.name
             self.clear()
             self.tree.refresh_tree()
