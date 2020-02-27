@@ -6,6 +6,7 @@ and their metadata and to copy the password to clipboard
 import logging
 
 # pylint: disable=no-name-in-module
+from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
 
 from .pass_clipboard import copy
@@ -27,6 +28,7 @@ class PasswordView(QGroupBox):
         self.config = config
         self.tree = tree
         self.pass_file = None
+        self.password_field = None
         if pass_file_object:
             self.load_pass_file(pass_file_object)
 
@@ -46,13 +48,17 @@ class PasswordView(QGroupBox):
         self.pass_file = pass_file_object
         password_field_label = QLabel('password')
         self.password_field = QLineEdit()
+        self.password_field.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         self.password_field.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_field.setDisabled(True)
+        self.password_field.setReadOnly(True)
         copy_password_button = QPushButton('&copy')
+        copy_password_button.setShortcut('Ctrl+c')
         copy_password_button.clicked.connect(self.copy_password)
         edit_password_button = QPushButton('&edit')
+        edit_password_button.setShortcut('Ctrl+e')
         edit_password_button.clicked.connect(self.edit_password)
-        view_password_button = QPushButton('&view')
+        view_password_button = QPushButton('&toggle')
+        view_password_button.setShortcut('Ctrl+t')
         view_password_button.clicked.connect(self.toggle_password_visibility)
         self.layout().addWidget(password_field_label, 0, 0)
         self.layout().addWidget(self.password_field, 0, 1)
@@ -67,6 +73,7 @@ class PasswordView(QGroupBox):
             self.layout().addWidget(additional_field_label, current_grid_view_row + 1, 0)
             self.layout().addWidget(additional_field, current_grid_view_row + 1, 1)
             additional_field.setText(value)
+            additional_field.setReadOnly(True)
         comment_browser_label = QLabel('comments')
         comment_browser = QTextBrowser()
         self.layout().addWidget(comment_browser_label, self.layout().rowCount() + 1, 0)
@@ -104,6 +111,9 @@ class PasswordView(QGroupBox):
             self.tree.select_item(current_item.file_system_path, new_name)
 
     def toggle_password_visibility(self):
+        """
+        toggle the visibility of the password field
+        """
         if self.password_field.echoMode() == QLineEdit.EchoMode.Password:
             self.password_field.setEchoMode(QLineEdit.EchoMode.Normal)
         else:

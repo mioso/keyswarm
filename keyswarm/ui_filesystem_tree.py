@@ -81,7 +81,7 @@ class PassUiFileSystemTree(QTreeWidget):
             node.setExpanded(True)
         file_system_path = path.join(node.file_system_path, node.name)
         for filesystem_item in listdir(file_system_path):
-            if filesystem_item not in ('.gpg-id', '.cfg'):
+            if filesystem_item not in ('.gpg-id', '.cfg', '.available-keys'):
                 child_node = PassUIFileSystemItem(file_system_path, filesystem_item)
                 child_node.setText(0, filesystem_item.replace('.gpg', ''))
                 node.addChild(child_node)
@@ -151,9 +151,12 @@ class PassUiFileSystemTree(QTreeWidget):
             value = handle(self.currentItem().file_system_path, self.currentItem().name)
             logger.debug('on_item_selection_changed: value: %r', value)
         except ValueError:
-            self.window().user_list_group.hide()
-            self.window().password_browser_group.hide()
+            self.window().right_content_frame.layout().setCurrentWidget(
+                self.window().right_content_frame.empty_frame)
+            return
         if value is None:
+            self.window().right_content_frame.layout().setCurrentWidget(
+                self.window().right_content_frame.empty_frame)
             return
         if self.currentItem().isfile:
             self.window().right_content_frame.layout().setCurrentWidget(

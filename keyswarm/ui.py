@@ -17,7 +17,7 @@ from PySide2.QtGui import QIcon
 from .ui_recipients import RecipientList
 from .ui_filesystem_tree import PassUiFileSystemTree
 from .pass_file_system import create_password_file, create_folder, get_config
-from .gpg_handler import write_gpg_id_file, recursive_reencrypt
+from .gpg_handler import write_gpg_id_file, recursive_reencrypt, import_gpg_keys
 from .ui_password_view import PasswordView
 from .ui_password_dialog import PasswordDialog
 from .search import PasswordSearch
@@ -29,9 +29,12 @@ class MainWindow(QMainWindow):
     """
     # pylint: disable=too-many-instance-attributes
     def __init__(self):
+        # pylint: disable=too-many-statements
         QMainWindow.__init__(self)
-        self.config = get_config(Path('~/.password-store/.cfg').expanduser())
-        self.tree = PassUiFileSystemTree(str(Path('~/.password-store').expanduser()))
+        password_store_root = '~/.password-store'
+        self.config = get_config(Path(password_store_root, '.cfg').expanduser())
+        import_gpg_keys(Path(password_store_root).expanduser())
+        self.tree = PassUiFileSystemTree(str(Path(password_store_root).expanduser()))
         self.searcher = None
 
         exit_action = QAction('Exit', self)
@@ -76,9 +79,10 @@ class MainWindow(QMainWindow):
         self.user_list_group.layout().addWidget(self.user_list_save_button)
         self.right_content_frame.layout().addWidget(self.user_list_group)
 
-        self.__init_search__()
+        self.right_content_frame.empty_frame = QFrame()
+        self.right_content_frame.layout().addWidget(self.right_content_frame.empty_frame)
+        self.right_content_frame.layout().setCurrentWidget(self.right_content_frame.empty_frame)
 
-    def __init_search__(self):
         self.create_new_search_index()
 
         self.tool_bar = self.addToolBar('search')
@@ -127,6 +131,7 @@ class MainWindow(QMainWindow):
         self.tool_bar.search_options.layout().addStretch(2**16)
         self.tool_bar.search_options.radio_button_glob_suffix.setChecked(True)
         self.tool_bar.search_options.button_group.buttonToggled.connect(self.search)
+        self.tool_bar.search_options.hide()
 
     def add_folder(self):
         """
@@ -289,6 +294,10 @@ QPushButton {
             self.tool_bar.search_results.show()
         else:
             self.tool_bar.search_results.hide()
+        if len(self.tool_bar.search_bar.text()) > 0:
+            self.tool_bar.search_options.show()
+        else:
+            self.tool_bar.search_options.hide()
 
     def clear_search(self):
         """
@@ -318,6 +327,9 @@ QPushButton {
 
 
 def main():
+    """
+    runs the application
+    """
     app = QApplication()
     window = MainWindow()
     window.setWindowTitle('Keyswarm')

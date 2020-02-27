@@ -115,13 +115,16 @@ class PasswordSearch:
                 child_count = node.childCount()
                 if node.isfile:
                     logger.debug('create_search_index: processing file %r', node.name)
-                    pass_file = handle(node.file_system_path, node.name)
-                    if not isinstance(pass_file, PassFile):
-                        raise ValueError('file in tree is not a PassFile')
-                    path = '/'.join(list(map(lambda a: a[0].name, stack)))
-                    writer.add_document(name=pass_file.name,
-                                        path=path,
-                                        comments=pass_file.comments)
+                    try:
+                        pass_file = handle(node.file_system_path, node.name)
+                        if not isinstance(pass_file, PassFile):
+                            raise ValueError('file in tree is not a PassFile')
+                        path = '/'.join(list(map(lambda a: a[0].name, stack)))
+                        writer.add_document(name=pass_file.name,
+                                            path=path,
+                                            comments=pass_file.comments)
+                    except ValueError:
+                        pass
         writer.commit()
         with self.__index.searcher() as searcher:
             logger.debug('create_search_index: %r', list(searcher.all_stored_fields()))

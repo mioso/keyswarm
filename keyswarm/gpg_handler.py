@@ -5,7 +5,8 @@ as well as utility function like key listing and reencryption of a file tree.
 
 from functools import lru_cache
 import logging
-from os import path, walk
+from os import path, walk, listdir
+from pathlib import Path
 from re import compile as re_compile, match as re_match
 from subprocess import PIPE, Popen, STDOUT
 from sys import exit as sys_exit
@@ -50,30 +51,31 @@ def get_binary():
 
 
 # noinspection DuplicatedCode
-def list_packages(path_to_file):
+def list_packets(path_to_file):
     """
     lists all gpg public keys a respective file is encrypted to
     :param path_to_file: string - complete path to gog encrypted file
     :return: list of stings
     """
     logger = logging.getLogger(__name__)
-    logger.debug('list_packages: path_to_file: %r', path_to_file)
+    logger.debug('list_packets: path_to_file: %r', path_to_file)
     gpg_subprocess = Popen([get_binary(), '--pinentry-mode', 'cancel', '--list-packets',
-                            path_to_file], stdout=PIPE, stderr=STDOUT)
-    stdout, _ = gpg_subprocess.communicate()
-    if re_match(b".*can't open.*", stdout):
+                            path_to_file], stdout=PIPE, stderr=PIPE)
+    stdout, stderr = gpg_subprocess.communicate()
+    if re_match(b".*can't open.*", stderr):
         raise FileNotFoundError('can\'t open file')
-    if re_match(b".*read error: Is a directory.*", stdout):
+    if re_match(b".*read error: Is a directory.*", stderr):
         raise ValueError('file is a directory')
-    if re_match(b".*no valid OpenPGP data found.*", stdout):
+    if re_match(b".*no valid OpenPGP data found.*", stderr):
         raise ValueError('no valid openpgp data found')
     stdout = stdout.split(b'\n')
-    # regex = re_compile(b'.*<(.*\@.*)>.*')
-    regex = re_compile(b'.*(ID [0-9A-Fa-f]{16}).*')
+    regex = re_compile(b'.*(keyid [0-9A-Fa-f]{16}).*')
     list_of_packet_ids = []
     for line in stdout:
+        logger.debug('list_packets: %r', line)
         if regex.match(line):
             list_of_packet_ids.append(list(regex.search(line).groups())[0].decode('utf-8'))
+    logger.debug('list_packets: list_of_packet_ids: %r', list_of_packet_ids)
     return list_of_packet_ids
 
 
@@ -96,21 +98,24 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
         gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, *additional_parameter,
                        '--decrypt', path_to_file]
     logger.debug('decrypt: gpg_command: %r', gpg_command)
-    gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=STDOUT)
+    gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
-    logger.debug('decrypt: len(stdout): %r', len(stdout))
+    logger.debug('decrypt: stdout: %r', stdout)
     logger.debug('decrypt: stderr: %r', stderr)
-    if re_match(b".*decryption failed: No secret key.*", stdout):
+    if stdout:
+        if utf8:
+            return stdout.decode('utf-8')
+        return stdout
+
+    if re_match(b".*decryption failed: No secret key.*", stderr):
         raise ValueError('no secret key')
-    if re_match(b".*can't open.*No such file or directory.*", stdout):
+    if re_match(b".*can't open.*No such file or directory.*", stderr):
         raise FileNotFoundError
-    if re_match(b".*read error: Is a directory.*", stdout):
+    if re_match(b".*read error: Is a directory.*", stderr):
         raise ValueError('file is a directory')
-    if re_match(b".*no valid OpenPGP data found.*", stdout):
+    if re_match(b".*no valid OpenPGP data found.*", stderr):
         raise ValueError('no valid openpgp data found')
-    if utf8:
-        return stdout.decode('utf-8')
-    return stdout
+    raise Exception('unkown gpg error: %r' % (stderr,))
 
 
 def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
@@ -186,12 +191,12 @@ def list_available_keys(additional_parameter=None, get_secret_keys=False):
     command = '--list-keys' if not get_secret_keys else '--list-secret-keys'
     gpg_subprocess = Popen([get_binary(), command, *additional_parameter],
                            stdout=PIPE,
-                           stderr=STDOUT)
+                           stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
     logger.debug('list_available_keys: stdout: %r', stdout)
     logger.debug('list_available_keys: stderr: %r', stderr)
     stdout = stdout.split(b'\n')
-    regex = re_compile(rb'^uid\s*\[.*\]\s(.*)$')
+    regex = re_compile(rb'^uid\s+\[.+\]\s(.*)$')
     list_of_packet_ids = []
     for line in stdout:
         logger.debug('list_available_keys: line: %r', line)
@@ -200,6 +205,33 @@ def list_available_keys(additional_parameter=None, get_secret_keys=False):
             logger.debug('list_available_keys: match: %r', match)
             list_of_packet_ids.append(match)
     return list_of_packet_ids
+
+
+def import_gpg_keys(root_path):
+    """
+    try to read all keys inside the `.available-keys` directory
+    directly at the root of the password store
+    :param root_path: PathLike path to the password store, usually `~/.password-store`
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('import_gpg_keys: root_path: %r', root_path)
+    key_directory = Path(root_path, '.available-keys')
+    logger.debug('import_gpg_keys: key_directory: %r', key_directory)
+    if path.isdir(key_directory):
+        logger.debug('import_gpg_keys: key directory exists')
+        key_files = list(map(str, filter(lambda a: True, map(lambda a: Path(key_directory, a),
+                                                             listdir(key_directory)))))
+        logger.debug('%r', key_files)
+        logger.debug('%r', *key_files)
+        if key_files:
+            gpg_subprocess = Popen([get_binary(), '--import', *key_files], stdout=PIPE, stderr=PIPE)
+            stdout, stderr = gpg_subprocess.communicate()
+            logger.debug('import_gpg_keys: stdout: %r', stdout)
+            logger.debug('import_gpg_keys: stderr: %r', stderr)
+        else:
+            logger.debug('import_gpg_keys: no files in key directory')
+    else:
+        logger.debug('import_gpg_keys: key directory does not exist')
 
 
 def write_gpg_id_file(path_to_file, list_of_gpg_ids):
