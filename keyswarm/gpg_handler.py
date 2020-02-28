@@ -5,7 +5,7 @@ as well as utility function like key listing and reencryption of a file tree.
 
 from functools import lru_cache
 import logging
-from os import path, walk, listdir
+from os import path, listdir
 from pathlib import Path
 from re import compile as re_compile, match as re_match
 from subprocess import PIPE, Popen, STDOUT
@@ -91,7 +91,7 @@ def list_packets(path_to_file):
     for line in stdout:
         logger.debug('list_packets: %r', line)
         if regex.match(line):
-            list_of_packet_ids.append(decode(list(regex.search(line).groups())[0]))
+            list_of_packet_ids.append(try_decode(list(regex.search(line).groups())[0]))
     logger.debug('list_packets: list_of_packet_ids: %r', list_of_packet_ids)
     return list_of_packet_ids
 
@@ -280,17 +280,26 @@ def recursive_reencrypt(path_to_folder, list_of_keys, gpg_home=None, additional_
     logger.debug('recursive_reencrypt: list_of_keys: %r', list_of_keys)
     logger.debug('recursive_reencrypt: gpg_home: %r', gpg_home)
     logger.debug('recursive_reencrypt: additional_parameter: %r', additional_parameter)
-    for root, _, files in walk(path_to_folder):
-        if root == path_to_folder:
-            for file in files:
-                if file[-4:] == '.gpg':
-                    file_path = path.join(root, file)
-                    cleartext = decrypt(file_path, gpg_home=gpg_home,
-                                        additional_parameter=additional_parameter)
-                    encrypt(clear_text=cleartext.encode(),
-                            list_of_recipients=list_of_keys,
-                            path_to_file=file_path,
-                            gpg_home=gpg_home)
+    for file_ in listdir(path_to_folder):
+        if Path(path_to_folder, file_).is_dir():
+            logger.debug('recursive_reencrypt: folder: %r %r', path_to_folder, file_)
+            if Path(path_to_folder, file_, '.gpg-id').exists():
+                logger.debug('recursive_reencrypt: has .gpg-id file')
+            else:
+                logger.debug('recursive_reencrypt: does not have .gpg-id file')
+                recursive_reencrypt(Path(path_to_folder, file_),
+                                    list_of_keys,
+                                    gpg_home,
+                                    additional_parameter)
         else:
-            if not path.exists(path.join(root, '.gpg-id')):
-                recursive_reencrypt(root, list_of_keys)
+            logger.debug('recursive_reencrypt: file: %r %r', path_to_folder, file_)
+            if file_[-4:] == '.gpg':
+                logger.debug('recursive_reencrypt: gpg_file')
+                file_path = Path(path_to_folder, file_)
+                cleartext = decrypt(file_path, gpg_home=gpg_home,
+                                    additional_parameter=additional_parameter)
+                encrypt(clear_text=cleartext.encode(),
+                        list_of_recipients=list_of_keys,
+                        path_to_file=file_path,
+                        gpg_home=gpg_home)
+    logger.debug('recursive_reencrypt: done with %r', path_to_folder)
