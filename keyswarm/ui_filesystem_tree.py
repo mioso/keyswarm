@@ -81,7 +81,7 @@ class PassUiFileSystemTree(QTreeWidget):
             node.setExpanded(True)
         file_system_path = path.join(node.file_system_path, node.name)
         for filesystem_item in listdir(file_system_path):
-            if filesystem_item not in ('.gpg-id', '.cfg', '.available-keys'):
+            if filesystem_item not in ('.gpg-id', '.cfg', '.available-keys', '.git', '.gitignore'):
                 child_node = PassUIFileSystemItem(file_system_path, filesystem_item)
                 child_node.setText(0, filesystem_item.replace('.gpg', ''))
                 node.addChild(child_node)

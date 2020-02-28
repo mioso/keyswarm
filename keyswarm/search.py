@@ -123,8 +123,8 @@ class PasswordSearch:
                         writer.add_document(name=pass_file.name,
                                             path=path,
                                             comments=pass_file.comments)
-                    except ValueError:
-                        pass
+                    except ValueError as error:
+                        logger.debug('create_search_index: %r', error)
         writer.commit()
         with self.__index.searcher() as searcher:
             logger.debug('create_search_index: %r', list(searcher.all_stored_fields()))

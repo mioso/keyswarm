@@ -11,6 +11,22 @@ from re import compile as re_compile, match as re_match
 from subprocess import PIPE, Popen, STDOUT
 from sys import exit as sys_exit
 
+def try_decode(byteslike):
+    logger = logging.getLogger(__name__)
+    try:
+        logger.debug('try_decode: utf-8')
+        return byteslike.decode('utf-8')
+    except UnicodeDecodeError as error:
+        logger.debug('try_decode: error: %r', error)
+    try:
+        logger.debug('try_decode: latin1')
+        return byteslike.decode('latin1')
+
+    except Exception as error:
+        logger.debug('try_decode: error: %r', error)
+        logger.critical('try_decode: did not find an encoding')
+        sys_exit(1)
+
 
 @lru_cache(maxsize=1)
 def get_binary():
@@ -27,7 +43,8 @@ def get_binary():
 
     gpg_subprocess = Popen(['gpg', '--version'], stdout=PIPE, stderr=None)
     stdout, _ = gpg_subprocess.communicate()
-    version = stdout.decode('utf-8').splitlines()[0]
+    logger.debug('get_binary: %r', stdout)
+    version = try_decode(stdout).splitlines()[0]
 
     match = regex.match(version)
     if match:
@@ -46,7 +63,7 @@ def get_binary():
                 logger.debug('get_binary: gpg2, version: %r', g_2)
                 if g_2 == "2":
                     return 'gpg2'
-    logging.getLogger().error('get_binary: unkown gpg version')
+    logger.critical('get_binary: unkown gpg version')
     sys_exit(1)
 
 
@@ -74,7 +91,7 @@ def list_packets(path_to_file):
     for line in stdout:
         logger.debug('list_packets: %r', line)
         if regex.match(line):
-            list_of_packet_ids.append(list(regex.search(line).groups())[0].decode('utf-8'))
+            list_of_packet_ids.append(decode(list(regex.search(line).groups())[0]))
     logger.debug('list_packets: list_of_packet_ids: %r', list_of_packet_ids)
     return list_of_packet_ids
 
@@ -104,7 +121,7 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
     logger.debug('decrypt: stderr: %r', stderr)
     if stdout:
         if utf8:
-            return stdout.decode('utf-8')
+            return try_decode(stdout)
         return stdout
 
     if re_match(b".*decryption failed: No secret key.*", stderr):
@@ -115,7 +132,7 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
         raise ValueError('file is a directory')
     if re_match(b".*no valid OpenPGP data found.*", stderr):
         raise ValueError('no valid openpgp data found')
-    raise Exception('unkown gpg error: %r' % (stderr,))
+    raise ValueError('unkown gpg error: %r' % (stderr,))
 
 
 def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
@@ -201,7 +218,7 @@ def list_available_keys(additional_parameter=None, get_secret_keys=False):
     for line in stdout:
         logger.debug('list_available_keys: line: %r', line)
         if regex.match(line):
-            match = list(regex.search(line).groups())[0].decode('utf-8')
+            match = try_decode(list(regex.search(line).groups())[0])
             logger.debug('list_available_keys: match: %r', match)
             list_of_packet_ids.append(match)
     return list_of_packet_ids
