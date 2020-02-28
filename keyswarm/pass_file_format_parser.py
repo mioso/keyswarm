@@ -1,11 +1,15 @@
-from re import search, compile
+"""
+this module provides an interface to files in the format used by pass
+"""
+
+from re import search, compile as re_compile
 from os import path
 import logging
 
 from .gpg_handler import decrypt
 
 
-class PassFile(object):
+class PassFile():
     """
     A representation of a pass file.
     """
@@ -13,7 +17,7 @@ class PassFile(object):
         logger = logging.getLogger(__name__)
         logger.debug('PassFile.__init__: %r %r)', root_path, name)
         try:
-            regex = compile(r'^(.*)\.gpg$')
+            regex = re_compile(r'^(.*)\.gpg$')
             match = regex.match(name)
             self.name = match.group(1)
         except (IndexError, TypeError):
@@ -22,9 +26,9 @@ class PassFile(object):
         self.root_path = root_path
         gpg_file = path.join(root_path, name) if name and root_path else None
         self.file = gpg_file
-        self.password = str()
-        self.attributes = list()
-        self.comments = str()
+        self.password = ''
+        self.attributes = []
+        self.comments = ''
         if gpg_file:
             lines = decrypt(gpg_file).split('\n')
             self.password = lines.pop(0)

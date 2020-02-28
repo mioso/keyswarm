@@ -87,7 +87,9 @@ class PasswordView(QGroupBox):
         logger = logging.getLogger(__name__)
         old_name = self.pass_file.name
         logger.debug('edit_password: old_name: "%s"', old_name)
-        pass_dialog = PasswordDialog.from_pass_file(self.pass_file)
+
+        config_attributes = self.config['attributes'] if 'attributes' in self.config else None
+        pass_dialog = PasswordDialog.from_pass_file(self.pass_file, config_attributes)
         if pass_dialog.exec_():
             current_item = self.tree.currentItem()
             if not current_item.isfile:

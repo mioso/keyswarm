@@ -14,9 +14,10 @@ from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, Q
                                QButtonGroup, QRadioButton)
 from PySide2.QtGui import QIcon
 
+from .config import get_config
 from .ui_recipients import RecipientList
 from .ui_filesystem_tree import PassUiFileSystemTree
-from .pass_file_system import create_password_file, create_folder, get_config
+from .pass_file_system import create_password_file, create_folder
 from .gpg_handler import write_gpg_id_file, recursive_reencrypt, import_gpg_keys
 from .ui_password_view import PasswordView
 from .ui_password_dialog import PasswordDialog
@@ -32,7 +33,7 @@ class MainWindow(QMainWindow):
         # pylint: disable=too-many-statements
         QMainWindow.__init__(self)
         password_store_root = '~/.password-store'
-        self.config = get_config(Path(password_store_root, '.cfg').expanduser())
+        self.config = get_config(Path(password_store_root).expanduser())
         import_gpg_keys(Path(password_store_root).expanduser())
         self.tree = PassUiFileSystemTree(str(Path(password_store_root).expanduser()))
         self.searcher = None
@@ -168,9 +169,11 @@ class MainWindow(QMainWindow):
         Displays an add password dialog.
         :return: None
         """
-        optional_fields = list()
+        optional_fields = []
         if 'attributes' in self.config:
-            optional_fields = list(self.config['attributes'])
+            optional_fields = list(map(lambda a: (a[0], '', a[1]),
+                                       dict(self.config['attributes']).items()))
+            optional_fields.sort()
         pass_dialog = PasswordDialog(optional_fields=optional_fields)
         if pass_dialog.exec_():
             current_item_parent = self.tree.currentItem().file_system_path
@@ -187,6 +190,8 @@ class MainWindow(QMainWindow):
                                      password_file=password_file)
 
                 self.tree.refresh_tree()
+                self.tree.select_item(path_to_folder=password_dir,
+                                      name=pass_dialog.password_name_input.text())
             except ValueError:
                 self.show_missing_key_error()
 

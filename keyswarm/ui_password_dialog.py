@@ -179,8 +179,8 @@ class PasswordDialog(QDialog):
     """
     An add password Dialog
     """
-    def __init__(self, opt_fields=None):
-        optional_fields = opt_fields or []
+    def __init__(self, optional_fields=None):
+        optional_fields = optional_fields or []
         logger = logging.getLogger(__name__)
         logger.debug('PasswordDialog: optional_fields: %r', optional_fields)
         fixed_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
@@ -213,8 +213,8 @@ class PasswordDialog(QDialog):
         # Setup Optional Labels and Inputs
         self.optional_fields = []
         if optional_fields:
-            for field, value in optional_fields:
-                self.__add_optional_field__(field, value)
+            for field, value, placeholder in optional_fields:
+                self.__add_optional_field__(field, value=value, placeholder=placeholder)
         comment_label = QLabel('comments')
         self.comment_field = QTextEdit()
         self.layout().addWidget(comment_label, self.layout().rowCount() + 1, 0)
@@ -275,7 +275,7 @@ class PasswordDialog(QDialog):
         logger.debug('PasswordDialog.confirm: accept')
         self.accept()
 
-    def __add_optional_field__(self, name, value=''):
+    def __add_optional_field__(self, name, value='', placeholder=''):
         """
         adds an optional field to the Dialog
         :param name:
@@ -285,6 +285,7 @@ class PasswordDialog(QDialog):
         label = QLabel('{name}:'.format(name=name))
         input_field = QLineEdit()
         input_field.setText(value)
+        input_field.setPlaceholderText(placeholder)
         self.grid_layout.addWidget(label, next_row, 0)
         self.grid_layout.addWidget(input_field, next_row, 1)
         self.optional_fields.append((label, input_field))
@@ -304,14 +305,31 @@ class PasswordDialog(QDialog):
         return pass_file
 
     @staticmethod
-    def from_pass_file(pass_file):
+    def from_pass_file(pass_file, config_attributes=None):
         """
         creates a password dialog from a pass file filling out
         the fields with the values from the pass file
 
         convienience function to create an edit password dialog
         """
-        dialog = PasswordDialog(pass_file.attributes)
+        logger = logging.getLogger(__name__)
+        logger.debug('from_pass_file: pass_file: %r', pass_file)
+        logger.debug('from_pass_file: config_attributes: %r', config_attributes)
+        logger.debug('from_pass_file: pass_file.attributes: %r', pass_file.attributes)
+
+        config_attributes = config_attributes or {}
+        file_attributes = dict(pass_file.attributes)
+        optional_fields = []
+        field_names = list(set(file_attributes) | set(config_attributes))
+        field_names.sort()
+        for field_name in field_names:
+            field_value = file_attributes[field_name] \
+                if field_name in file_attributes else ''
+            field_placeholder = config_attributes[field_name] \
+                if field_name in config_attributes else ''
+            optional_fields.append((field_name, field_value, field_placeholder))
+
+        dialog = PasswordDialog(optional_fields)
         dialog.setWindowTitle('Edit Password')
         dialog.password_name_input.setText(pass_file.name)
         dialog.password_input.setText(pass_file.password)

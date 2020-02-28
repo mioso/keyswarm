@@ -1,10 +1,15 @@
+"""
+provides an interface to the pass file system
+"""
+
+import logging
 from os import path, mkdir, rmdir, remove, walk
-from shutil import move
 from pathlib import Path
+from shutil import move
+
 from .gpg_handler import encrypt, get_recipients_from_gpg_id
 from .pass_file_format_parser import PassFile
 
-import logging
 
 def handle(root_path, name):
     """
@@ -19,7 +24,8 @@ def handle(root_path, name):
     if path.isfile(path.join(root_path, name)):
         logger.debug('handle: path is file')
         return PassFile(root_path=root_path, name=name)
-    if path.isdir(path.join(root_path, name)) and path.exists(path.join(path.join(root_path, name), '.gpg-id')):
+    if path.isdir(path.join(root_path, name)) and path.exists(
+            path.join(path.join(root_path, name), '.gpg-id')):
         logger.debug('handle: path is directory with .gpg-id')
         list_to_return = []
         with open(path.join(path.join(root_path, name), '.gpg-id')) as file:
@@ -27,21 +33,21 @@ def handle(root_path, name):
                 list_to_return.append(line.replace('\n', ''))
         logger.debug('handle: return: %r', list_to_return)
         return list_to_return
-    if path.isdir(path.join(root_path, name)):
-        logger.debug('handle: path is directory')
-        gpg_id_file_path = search_gpg_id_file(path.join(root_path, name))
-        logger.debug('handle: gpg_id_file_path: %r', gpg_id_file_path)
-        list_to_return = []
-        with open(gpg_id_file_path) as file:
-            for line in file.readlines():
-                list_to_return.append(line.replace('\n', ''))
-        logger.debug('handle: return: %r', list_to_return)
-        return list_to_return
+    logger.debug('handle: path is directory')
+    gpg_id_file_path = search_gpg_id_file(path.join(root_path, name))
+    logger.debug('handle: gpg_id_file_path: %r', gpg_id_file_path)
+    list_to_return = []
+    with open(gpg_id_file_path) as file:
+        for line in file.readlines():
+            list_to_return.append(line.replace('\n', ''))
+    logger.debug('handle: return: %r', list_to_return)
+    return list_to_return
 
 
 def create_password_file(path_to_folder, name, password_file):
     """
-    creates a gpg encrypted .gpg file with respective name in the respective folder from PassFile Object
+    creates a gpg encrypted .gpg file with respective name
+    in the respective folder from PassFile Object
     :param path_to_folder:
     :param name:
     :param password_file:
@@ -62,8 +68,7 @@ def create_password_file(path_to_folder, name, password_file):
         return encrypt(clear_text=clear_text,
                        list_of_recipients=list_of_recipients,
                        path_to_file=path_to_file)
-    else:
-        return False
+    return False
 
 
 def delete_password_file(path_to_folder, name):
@@ -83,10 +88,19 @@ def delete_password_file(path_to_folder, name):
     except FileNotFoundError:
         logger.warning('delete_password_file: tried to remove non-existent file: %r', file_path)
     except PermissionError:
-        logger.warning('delete_password_file: insufficient permission to remove file: %r', file_path)
+        logger.warning('delete_password_file: insufficient permission to remove file: %r',
+                       file_path)
 
 
 def move_password_file(path_to_old_folder, old_name, path_to_new_folder, new_name):
+    """
+    convinience function around change_password_file that retrieves the password_file
+    before calling change_password_file
+    :param path_to_old_folder: string
+    :param old_name: string
+    :param path_to_new_folder: string
+    :param new_name: string
+    """
     logger = logging.getLogger(__name__)
     logger.debug('move_password_file: path_to_old_folder: %r', path_to_old_folder)
     logger.debug('move_password_file: old_name: %r', old_name)
@@ -102,7 +116,17 @@ def move_password_file(path_to_old_folder, old_name, path_to_new_folder, new_nam
                              password_file=pass_file)
 
 
-def change_password_file(path_to_old_folder, old_name, path_to_new_folder, new_name, password_file):
+def change_password_file(path_to_old_folder, old_name, path_to_new_folder,
+                         new_name, password_file):
+    """
+    write the given password file to the new location under the new name
+    if the new name or path differs from the old the old file will be deleted
+    :param path_to_old_folder: string
+    :param old_name: string
+    :param path_to_new_folder: string
+    :param new_name: string
+    :param password_file: PassFile
+    """
     logger = logging.getLogger(__name__)
     logger.debug('change_password_file: path_to_old_folder: %r', path_to_old_folder)
     logger.debug('change_password_file: old_name: %r', old_name)
@@ -117,12 +141,10 @@ def change_password_file(path_to_old_folder, old_name, path_to_new_folder, new_n
         if path.exists(path.join(path_to_new_folder, new_name)):
             logger.debug('change_password_file: new file already exists')
             raise ValueError('duplicate password name')
-        else:
-            create_password_file(path_to_folder=path_to_new_folder,
-                                 name=new_name,
-                                 password_file=password_file)
-            delete_password_file(path_to_folder=path_to_old_folder,
-                                 name=old_name)
+
+        create_password_file(path_to_folder=path_to_new_folder, name=new_name,
+                             password_file=password_file)
+        delete_password_file(path_to_folder=path_to_old_folder, name=old_name)
 
 
 def create_folder(path_to_folder, name):
@@ -165,18 +187,23 @@ def move_password_folder(path_to_old_parent_folder, old_name, path_to_new_parent
     else:
         create_folder(path_to_new_parent_folder, new_name)
         for root, folders, files in walk(Path(path_to_old_parent_folder, old_name)):
-            logger.debug('move_password_folder: root: %r folders: %r files: %r', root, folders, files)
+            logger.debug('move_password_folder: root: %r folders: %r files: %r',
+                         root, folders, files)
             for file_ in files:
                 logger.debug('move_password_folder: file: %r', file_)
-                move_password_file(path_to_old_folder=path.join(path_to_old_parent_folder, old_name),
+                move_password_file(path_to_old_folder=path.join(path_to_old_parent_folder,
+                                                                old_name),
                                    old_name=file_.replace('.gpg', ''),
-                                   path_to_new_folder=path.join(path_to_new_parent_folder, new_name),
+                                   path_to_new_folder=path.join(path_to_new_parent_folder,
+                                                                new_name),
                                    new_name=file_.replace('.gpg', ''))
             for folder in folders:
                 logger.debug('move_password_folder: folder: %r', folder)
-                move_password_folder(path_to_old_parent_folder=path.join(path_to_old_parent_folder, old_name),
+                move_password_folder(path_to_old_parent_folder=path.join(
+                    path_to_old_parent_folder, old_name),
                                      old_name=folder,
-                                     path_to_new_parent_folder=path.join(path_to_new_parent_folder, new_name),
+                                     path_to_new_parent_folder=path.join(
+                                         path_to_new_parent_folder, new_name),
                                      new_name=folder)
             break
         rmdir(path.join(path_to_old_parent_folder, old_name))
@@ -195,17 +222,3 @@ def search_gpg_id_file(path_to_folder):
     if not path.exists(return_path):
         return search_gpg_id_file(str(parent_of_path_to_folder))
     return return_path
-
-
-def get_config(cfg_file):
-    """
-    reads and parses config from file
-    :param cfg_file: string - path to config file
-    :return: ConfigParser Object
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('get_config: cfg_file: %r', cfg_file)
-    from configparser import ConfigParser
-    config_parser = ConfigParser()
-    config_parser.read(cfg_file, encoding='utf8')
-    return config_parser
