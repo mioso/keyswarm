@@ -7,7 +7,7 @@ from functools import lru_cache
 import logging
 from os import path, listdir
 from pathlib import Path
-from re import compile as re_compile, match as re_match
+from re import compile as re_compile, match as re_match, DOTALL
 from subprocess import PIPE, Popen, STDOUT
 from sys import exit as sys_exit
 
@@ -76,14 +76,15 @@ def list_packets(path_to_file):
     """
     logger = logging.getLogger(__name__)
     logger.debug('list_packets: path_to_file: %r', path_to_file)
-    gpg_subprocess = Popen([get_binary(), '--pinentry-mode', 'cancel', '--list-packets',
-                            path_to_file], stdout=PIPE, stderr=PIPE)
+    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=2', '--batch-mode',
+                            '--list-only', '--list-packets', path_to_file],
+                           stdout=PIPE, stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
     if re_match(b".*can't open.*", stderr):
         raise FileNotFoundError('can\'t open file')
     if re_match(b".*read error: Is a directory.*", stderr):
         raise ValueError('file is a directory')
-    if re_match(b".*no valid OpenPGP data found.*", stderr):
+    if re_match(rb".*\[GNUPG:\] NODATA.*", stderr):
         raise ValueError('no valid openpgp data found')
     stdout = stdout.split(b'\n')
     regex = re_compile(b'.*(keyid [0-9A-Fa-f]{16}).*')
@@ -108,12 +109,12 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
     logger.debug('decrypt: path_to_file: %r', path_to_file)
     logger.debug('decrypt: gpg_home: %r', gpg_home)
     logger.debug('decrypt: additional_parameter: %r', additional_parameter)
-    if additional_parameter is None:
-        additional_parameter = list()
-    gpg_command = [get_binary(), '--quiet', *additional_parameter, '--decrypt', path_to_file]
+    additional_parameter = additional_parameter or []
+    gpg_command = [get_binary(), '--with-colons', '--status-fd=2', '--quiet',
+                   *additional_parameter, '--decrypt', path_to_file]
     if gpg_home:
-        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, *additional_parameter,
-                       '--decrypt', path_to_file]
+        gpg_command = [get_binary(), '--with-colons', '--status-fd=2', '--quiet', '--homedir',
+                       gpg_home, *additional_parameter, '--decrypt', path_to_file]
     logger.debug('decrypt: gpg_command: %r', gpg_command)
     gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
@@ -124,13 +125,13 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
             return try_decode(stdout)
         return stdout
 
-    if re_match(b".*decryption failed: No secret key.*", stderr):
+    if re_match(rb".*\[GNUPG:\] DECRYPTION_FAILED*", stderr, DOTALL):
         raise ValueError('no secret key')
-    if re_match(b".*can't open.*No such file or directory.*", stderr):
+    if re_match(rb".*\[GNUPG:\] NODATA.*", stderr, DOTALL):
+        raise ValueError('file is a directory or empty')
+    if re_match(rb".*\[GNUPG:\] FAILURE decrypt.*", stderr, DOTALL):
         raise FileNotFoundError
-    if re_match(b".*read error: Is a directory.*", stderr):
-        raise ValueError('file is a directory')
-    if re_match(b".*no valid OpenPGP data found.*", stderr):
+    if re_match(rb".*no valid OpenPGP data found.*", stderr, DOTALL):
         raise ValueError('no valid openpgp data found')
     raise ValueError('unkown gpg error: %r' % (stderr,))
 
@@ -157,20 +158,26 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     for recipient in list_of_recipients:
         cli_recipients.append('-r')
         cli_recipients.append(recipient)
-    gpg_command = [get_binary(), '--encrypt', '--auto-key-locate', 'local', '--trust-model',
-                   'always', *cli_recipients]
+    gpg_command = [get_binary(), '--with-colons', '--status-fd=2', '--quiet', '--encrypt',
+                   '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
     if gpg_home:
-        gpg_command = [get_binary(), '--quiet', '--homedir', gpg_home, '--encrypt',
-                       '--auto-key-locate', 'local', '--trust-model', 'always', *cli_recipients]
+        gpg_command = [get_binary(), '--with-colons', '--status-fd=2', '--quiet', '--homedir',
+                       gpg_home, '--encrypt', '--auto-key-locate', 'local', '--trust-model',
+                       'always', *cli_recipients]
     logger.debug('encrypt: gpg_command: %r', gpg_command)
-    gpg_subprocess = Popen(gpg_command, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+    gpg_subprocess = Popen(gpg_command, stdin=PIPE, stdout=PIPE, stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate(input=clear_text)
     logger.debug('encrypt: stdout: %r', stdout)
     logger.debug('encrypt: stderr: %r', stderr)
-    if re_match(b'.*No such file or directory.*', stdout):
+    if re_match(rb'.*No such file or directory.*', stderr, DOTALL):
         raise FileNotFoundError
-    if re_match(b'.*No public key.*', stdout):
+    if re_match(rb'.*\[GNUPG:\] NO_RECP.*', stderr, DOTALL):
+        logger.error('logic error: no recipients should have been caught already')
+        raise ValueError('no recipients')
+    if re_match(rb'.*\[GNUPG:\] INV_RECP.*', stderr, DOTALL):
         raise ValueError('no public key')
+    if re_match(rb'.*\[GNUPG:\] FAILURE encrypt.*', stderr, DOTALL):
+        raise ValueError('unknown gpg error')
     if path_to_file:
         with open(path_to_file, 'bw') as file:
             file.write(stdout)
@@ -203,26 +210,51 @@ def list_available_keys(additional_parameter=None, get_secret_keys=False):
     """
     logger = logging.getLogger(__name__)
     logger.debug('list_available_keys: additional_parameter: %r', additional_parameter)
-    if additional_parameter is None:
-        additional_parameter = []
+    additional_parameter = additional_parameter or []
     command = '--list-keys' if not get_secret_keys else '--list-secret-keys'
-    gpg_subprocess = Popen([get_binary(), command, *additional_parameter],
+    gpg_subprocess = Popen([get_binary(), '--with-colons', command, *additional_parameter],
                            stdout=PIPE,
                            stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
     logger.debug('list_available_keys: stdout: %r', stdout)
     logger.debug('list_available_keys: stderr: %r', stderr)
-    stdout = stdout.split(b'\n')
-    regex = re_compile(rb'^uid\s+\[.+\]\s(.*)$')
+    stdout = stdout.splitlines()
+    regex = re_compile(rb'^uid:.*')
     list_of_packet_ids = []
     for line in stdout:
         logger.debug('list_available_keys: line: %r', line)
         if regex.match(line):
-            match = try_decode(list(regex.search(line).groups())[0])
-            logger.debug('list_available_keys: match: %r', match)
-            list_of_packet_ids.append(match)
+            key_id = try_decode(line).split(':')[9]
+            logger.debug('list_available_keys: match: %r', key_id)
+            list_of_packet_ids.append(key_id)
     return list_of_packet_ids
 
+def generate_keypair(key_id, key_length=4096, expiration_date=None, additional_parameter=None):
+    """
+    generates a gpg keypair
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('generate_private_key: key_id: %r', key_id)
+    logger.debug('generate_private_key: key_length: %r', key_length)
+    logger.debug('generate_private_key: expiration_date: %r', expiration_date)
+    additional_parameter = additional_parameter or []
+    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=2', '--quick-gen-key',
+                            key_id, *additional_parameter], stdout=PIPE, stderr=PIPE)
+    stdout, stderr = gpg_subprocess.communicate()
+    logger.debug('generate_keypair: stdout: %r', stdout)
+    logger.debug('generate_keypair: stderr: %r', stderr)
+
+    if stdout:
+        lines = try_decode(stdout).splitlines()
+        regex = re_compile(r'^uid:.*')
+        for line in lines:
+            logger.debug('generate_keypair: line: %r', line)
+            if regex.match(line):
+                key_id = line.split(':')[9]
+                logger.debug('generate_keypair: key_id: %r', key_id)
+                return key_id
+        raise ValueError('gpg returned no uid line')
+    raise ValueError(stderr)
 
 def import_gpg_keys(root_path):
     """
@@ -241,7 +273,8 @@ def import_gpg_keys(root_path):
         logger.debug('%r', key_files)
         logger.debug('%r', *key_files)
         if key_files:
-            gpg_subprocess = Popen([get_binary(), '--import', *key_files], stdout=PIPE, stderr=PIPE)
+            gpg_subprocess = Popen([get_binary(), '--with-colons', '-status-fd=2', '--import',
+                                    *key_files], stdout=PIPE, stderr=PIPE)
             stdout, stderr = gpg_subprocess.communicate()
             logger.debug('import_gpg_keys: stdout: %r', stdout)
             logger.debug('import_gpg_keys: stderr: %r', stderr)

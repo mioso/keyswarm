@@ -52,7 +52,7 @@ class PassUiFileSystemTree(QTreeWidget):
     """
     def __init__(self, root):
         QTreeWidget.__init__(self)
-        self.root = root
+        self.root = str(root)
         self.setHeaderLabel('PasswordStore')
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)

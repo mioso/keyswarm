@@ -7,7 +7,7 @@ from os import path, mkdir, rmdir, remove, walk
 from pathlib import Path
 from shutil import move
 
-from .gpg_handler import encrypt, get_recipients_from_gpg_id
+from .gpg_handler import encrypt, get_recipients_from_gpg_id, write_gpg_id_file
 from .pass_file_format_parser import PassFile
 
 
@@ -222,3 +222,15 @@ def search_gpg_id_file(path_to_folder):
     if not path.exists(return_path):
         return search_gpg_id_file(str(parent_of_path_to_folder))
     return return_path
+
+def initialize_password_store(password_store_root, own_key_id):
+    """
+    set up an empty password store for self use
+    :param password_store_root: PathLike root path of the password store directory
+    :param own_key_id: string id of the users gpg secret key
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('initialize_password_store: password_store_root: %r', password_store_root)
+    logger.debug('initialize_password_store: own_key: %r', own_key_id)
+    mkdir(password_store_root)
+    write_gpg_id_file(Path(password_store_root, '.gpg-id'), [own_key_id])

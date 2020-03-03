@@ -3,22 +3,24 @@ This module provides the main application window and the main function.
 """
 
 from functools import partial
+import logging
 from os import path
 from pathlib import Path
-import logging
+from sys import exit as sys_exit
 
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QAction,
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
                                QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
-                               QButtonGroup, QRadioButton)
+                               QButtonGroup, QRadioButton, QComboBox, QFormLayout)
 from PySide2.QtGui import QIcon
 
 from .config import get_config
 from .ui_recipients import RecipientList
 from .ui_filesystem_tree import PassUiFileSystemTree
-from .pass_file_system import create_password_file, create_folder
-from .gpg_handler import write_gpg_id_file, recursive_reencrypt, import_gpg_keys
+from .pass_file_system import create_password_file, create_folder, initialize_password_store
+from .gpg_handler import (write_gpg_id_file, recursive_reencrypt, generate_keypair,
+                          import_gpg_keys, list_available_keys)
 from .ui_password_view import PasswordView
 from .ui_password_dialog import PasswordDialog
 from .search import PasswordSearch
@@ -32,10 +34,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         # pylint: disable=too-many-statements
         QMainWindow.__init__(self)
-        password_store_root = '~/.password-store'
-        self.config = get_config(Path(password_store_root).expanduser())
-        import_gpg_keys(Path(password_store_root).expanduser())
-        self.tree = PassUiFileSystemTree(str(Path(password_store_root).expanduser()))
+        password_store_root = Path('~/.password-store').expanduser()
+        self.config = get_config(password_store_root)
+        import_gpg_keys(password_store_root)
+        try:
+            self.tree = PassUiFileSystemTree(password_store_root)
+        except FileNotFoundError:
+            self.create_password_store(password_store_root)
         self.searcher = None
 
         exit_action = QAction('Exit', self)
@@ -133,6 +138,135 @@ class MainWindow(QMainWindow):
         self.tool_bar.search_options.radio_button_glob_suffix.setChecked(True)
         self.tool_bar.search_options.button_group.buttonToggled.connect(self.search)
         self.tool_bar.search_options.hide()
+
+    @staticmethod
+    def critical_error_message(message, exit_value=1):
+        """
+        Show a modal dialog with an error message and an exit button.
+        On closing the dialog in any way sys.exit will be called
+        :param message: sting message displayed in the dialog
+        :param exit_value: 3..125,166..254 non-reserved error code as return value of the process
+        """
+        logging.getLogger(__name__).critical(message)
+        dialog = QDialog()
+        dialog.setLayout(QVBoxLayout())
+        dialog.layout().addWidget(QLabel(message))
+        frame = QFrame()
+        frame.setLayout(QHBoxLayout())
+        frame.layout().addStretch(2**16)
+        button = QPushButton('&Exit')
+        button.clicked.connect(dialog.accept)
+        frame.layout().addWidget(button)
+        dialog.layout().addWidget(frame)
+        dialog.exec_()
+        sys_exit(exit_value)
+
+    def create_password_store(self, password_store_root):
+        """
+        Create a new password store or show an error if unable to do so.
+        Future version will ask the user if they want to clone a git repository instead.
+        :param password_store_root: PathLike path of the root directory to create
+        """
+        # TODO: ask user if the want to clone a git repo as the password store
+        logger = logging.getLogger(__name__)
+        logger.debug('create_password_store: password_store_root: %r', password_store_root)
+        try:
+            user_key = self.get_user_key()
+            if not user_key:
+                self.critical_error_message("No private key selected.\nCan't continue.")
+            initialize_password_store(password_store_root, user_key)
+            self.tree = PassUiFileSystemTree(password_store_root)
+        except PermissionError as error:
+            logger.debug(error)
+            self.critical_error_message('Unable to create password store at %r, permission denied'
+                                        % (password_store_root,))
+        except FileExistsError as error:
+            logger.debug(error)
+            self.critical_error_message('Unable to create password store at %r, there already is a'
+                                        ' file or directory with that path' %
+                                        (password_store_root,))
+        except Exception as error: # pylint: disable=broad-except
+            logger.warning(error)
+            self.critical_error_message(error)
+
+    def get_user_key(self):
+        """
+        Retrieve the identifier of the users private gpg key.
+        Asks the user which key to select if gpg reports multiple private keys.
+        """
+        logger = logging.getLogger(__name__)
+        list_of_private_keys = list_available_keys(get_secret_keys=True)
+        logger.debug('get_user_key: list_of_private_keys: %r', list_of_private_keys)
+        if len(list_of_private_keys) == 0:
+            return self.generate_key_dialog()
+        if len(list_of_private_keys) == 1:
+            return list_of_private_keys[0]
+
+        selection = self.selection_dialog(list_of_private_keys,
+                                          "Which private key should be used?")
+        return selection or self.generate_key_dialog()
+
+    @staticmethod
+    def generate_key_dialog():
+        """
+        Show a dialog to collect data required for gpg private key generation and generate
+        said key returning the id of the generated key.
+        :return: string id of the generated key
+        """
+        logger = logging.getLogger(__name__)
+        dialog = QDialog()
+        dialog.setWindowTitle('Create GPG Key')
+        dialog.setLayout(QFormLayout())
+        name_edit = QLineEdit()
+        dialog.layout().addRow(dialog.tr('&Name'), name_edit)
+        email_edit = QLineEdit()
+        dialog.layout().addRow(dialog.tr('&Email'), email_edit)
+        button_accept = QPushButton('&Accept')
+        button_accept.clicked.connect(dialog.accept)
+        bottom_row_layout = QHBoxLayout()
+        bottom_row_layout.addStretch(2**16)
+        bottom_row_layout.addWidget(button_accept)
+        dialog.layout().addRow(bottom_row_layout)
+
+        if dialog.exec_():
+            key_id = f'{name_edit.text()} <{email_edit.text()}>'
+            logger.debug('generate_key_dialog: key_id: %r', key_id)
+            return generate_keypair(key_id)
+        return None
+
+    @staticmethod
+    def selection_dialog(list_of_options, window_title, label_text=None):
+        """
+        Show a selection dialog with a list of options to select from and return the selected
+        option or None if the dialog was canceled.
+        :param list_of_options: [string] options to select from
+        :param window_title: string title of the dialog window
+        :param label_text: Maybe(string) text of an optional label above the selection
+        :return: Maybe(string) one element of the list of options or None
+        """
+        logger = logging.getLogger(__name__)
+        if not list_of_options:
+            return None
+        dialog = QDialog()
+        dialog.setWindowTitle(window_title)
+        dialog.setLayout(QVBoxLayout())
+        if label_text:
+            dialog.layout().addWidget(QLabel(label_text))
+        selection = QComboBox()
+        selection.addItems(list_of_options)
+        dialog.layout().addWidget(selection)
+        frame = QFrame()
+        frame.setLayout(QHBoxLayout())
+        frame.layout().addStretch(2**16)
+        button_accept = QPushButton('&Accept')
+        button_accept.clicked.connect(dialog.accept)
+        frame.layout().addWidget(button_accept)
+        dialog.layout().addWidget(frame)
+
+        if dialog.exec_():
+            logger.debug('get_user_key: currentText: %r', selection.currentText())
+            return selection.currentText()
+        return None
 
     def add_folder(self):
         """
