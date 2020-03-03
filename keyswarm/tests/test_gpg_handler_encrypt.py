@@ -1,9 +1,15 @@
-from tempfile import TemporaryDirectory
+"""
+tests for the encryption fuctionality of gpg_handler
+"""
+
 from base64 import b64decode
 from os import path, system
-from keyswarm.gpg_handler import encrypt, get_binary
 from subprocess import PIPE, Popen, run
+from tempfile import TemporaryDirectory
+
 from pytest import raises
+
+from keyswarm.gpg_handler import encrypt, get_binary
 from . import private_key
 
 
@@ -29,35 +35,35 @@ def test_gpg_encrypt():
                                '--decrypt']
         gpg_subprocess = Popen(gpg_decrypt_command, stdin=PIPE, stdout=PIPE)
         gpg_subprocess.stdin.write(cyphertext)
-        stdout, stderr = gpg_subprocess.communicate()
+        stdout, _ = gpg_subprocess.communicate()
         assert stdout.decode('utf8') == 'payload'
 
 
 def test_gpg_encrypt_homedir_not_found():
     with TemporaryDirectory() as tmpdirname:
         with raises(FileNotFoundError):
-            output = encrypt(clear_text=b'payload',
-                             list_of_recipients=['thiskey@isnot.relevenat-for-the.test'],
-                             gpg_home=path.join(tmpdirname, 'this_path_does_not_exist'))
+            encrypt(clear_text=b'payload',
+                    list_of_recipients=['thiskey@isnot.relevenat-for-the.test'],
+                    gpg_home=path.join(tmpdirname, 'this_path_does_not_exist'))
 
 
 def test_gpg_encrypt_public_key_not_found():
     with TemporaryDirectory() as tmpdirname:
         with raises(ValueError):
-             encrypt(clear_text=b'payload',
-                     list_of_recipients=['thiskey@does_not.exist'],
-                     gpg_home=tmpdirname)
+            encrypt(clear_text=b'payload',
+                    list_of_recipients=['thiskey@does_not.exist'],
+                    gpg_home=tmpdirname)
 
 
 def test_gpg_encrypt_output_dir_not_found():
     with TemporaryDirectory() as tmpdirname:
         with raises(FileNotFoundError):
-            test = encrypt(clear_text=b'payload',
-                           list_of_recipients=['thiskey@isnot.relevenat-for-the.test'],
-                           path_to_file=path.join(tmpdirname, 'this_folder_doesnt_exist', 'file.gpg'))
+            encrypt(clear_text=b'payload',
+                    list_of_recipients=['thiskey@isnot.relevenat-for-the.test'],
+                    path_to_file=path.join(tmpdirname, 'this_folder_doesnt_exist', 'file.gpg'))
 
 
 def test_gpg_encrypt_no_recipients():
     with raises(ValueError):
-        test = encrypt(clear_text=b'payload',
-                       list_of_recipients=[])
+        encrypt(clear_text=b'payload',
+                list_of_recipients=[])
