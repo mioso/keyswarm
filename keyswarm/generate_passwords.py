@@ -1,3 +1,7 @@
+"""
+generates passwords using secrets
+"""
+
 from string import digits, ascii_letters, punctuation
 from secrets import choice
 

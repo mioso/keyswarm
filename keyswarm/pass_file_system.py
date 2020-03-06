@@ -3,11 +3,11 @@ provides an interface to the pass file system
 """
 
 import logging
-from os import path, mkdir, rmdir, remove, walk
+from os import path, listdir, mkdir, rmdir, remove, walk
 from pathlib import Path
 from shutil import move
 
-from .gpg_handler import encrypt, get_recipients_from_gpg_id, write_gpg_id_file
+from .gpg_handler import decrypt, encrypt, get_recipients_from_gpg_id, write_gpg_id_file
 from .pass_file_format_parser import PassFile
 
 
@@ -222,6 +222,46 @@ def search_gpg_id_file(path_to_folder):
     if not path.exists(return_path):
         return search_gpg_id_file(str(parent_of_path_to_folder))
     return return_path
+
+
+def recursive_reencrypt(path_to_folder, list_of_keys, gpg_home=None, additional_parameter=None):
+    """
+    recursively reencrypts all files in a given path with the respective gpg public keys
+    :param additional_parameter: gpg parameter - DO NOT USE THIS Except for testing purposes
+    :param gpg_home: gpg_home directory to use
+    :param path_to_folder: complete path to root folder
+    :param list_of_keys: list of strings
+    :return: None
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('recursive_reencrypt: path_to_folder: %r', path_to_folder)
+    logger.debug('recursive_reencrypt: list_of_keys: %r', list_of_keys)
+    logger.debug('recursive_reencrypt: gpg_home: %r', gpg_home)
+    logger.debug('recursive_reencrypt: additional_parameter: %r', additional_parameter)
+    for file_ in listdir(path_to_folder):
+        if Path(path_to_folder, file_).is_dir():
+            logger.debug('recursive_reencrypt: folder: %r %r', path_to_folder, file_)
+            if Path(path_to_folder, file_, '.gpg-id').exists():
+                logger.debug('recursive_reencrypt: has .gpg-id file')
+            else:
+                logger.debug('recursive_reencrypt: does not have .gpg-id file')
+                recursive_reencrypt(Path(path_to_folder, file_),
+                                    list_of_keys,
+                                    gpg_home,
+                                    additional_parameter)
+        else:
+            logger.debug('recursive_reencrypt: file: %r %r', path_to_folder, file_)
+            if file_[-4:] == '.gpg':
+                logger.debug('recursive_reencrypt: gpg_file')
+                file_path = Path(path_to_folder, file_)
+                cleartext = decrypt(file_path, gpg_home=gpg_home,
+                                    additional_parameter=additional_parameter)
+                encrypt(clear_text=cleartext.encode(),
+                        list_of_recipients=list_of_keys,
+                        path_to_file=file_path,
+                        gpg_home=gpg_home)
+    logger.debug('recursive_reencrypt: done with %r', path_to_folder)
+
 
 def initialize_password_store(password_store_root, own_key_id):
     """

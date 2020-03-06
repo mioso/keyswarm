@@ -8,7 +8,7 @@ import logging
 from os import path, listdir
 from pathlib import Path
 from re import compile as re_compile, match as re_match, DOTALL
-from subprocess import PIPE, Popen, STDOUT
+from subprocess import PIPE, Popen
 from sys import exit as sys_exit
 
 def try_decode(byteslike):
@@ -76,15 +76,17 @@ def list_packets(path_to_file):
     """
     logger = logging.getLogger(__name__)
     logger.debug('list_packets: path_to_file: %r', path_to_file)
-    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=2', '--batch-mode',
+    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=2',
                             '--list-only', '--list-packets', path_to_file],
                            stdout=PIPE, stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
-    if re_match(b".*can't open.*", stderr):
+    logger.debug('list_packets: stdout: %r', stdout)
+    logger.debug('list_packets: stderr: %r', stderr)
+    if re_match(b".*can't open.*", stderr, DOTALL):
         raise FileNotFoundError('can\'t open file')
-    if re_match(b".*read error: Is a directory.*", stderr):
+    if re_match(b".*read error: Is a directory.*", stderr, DOTALL):
         raise ValueError('file is a directory')
-    if re_match(rb".*\[GNUPG:\] NODATA.*", stderr):
+    if re_match(rb".*\[GNUPG:\] NODATA.*", stderr, DOTALL):
         raise ValueError('no valid openpgp data found')
     stdout = stdout.split(b'\n')
     regex = re_compile(b'.*(keyid [0-9A-Fa-f]{16}).*')
@@ -125,7 +127,7 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
             return try_decode(stdout)
         return stdout
 
-    if re_match(rb".*\[GNUPG:\] DECRYPTION_FAILED*", stderr, DOTALL):
+    if re_match(rb".*\[GNUPG:\] DECRYPTION_FAILED.*", stderr, DOTALL):
         raise ValueError('no secret key')
     if re_match(rb".*\[GNUPG:\] NODATA.*", stderr, DOTALL):
         raise ValueError('file is a directory or empty')
@@ -297,42 +299,3 @@ def write_gpg_id_file(path_to_file, list_of_gpg_ids):
     with open(path_to_file, 'w') as file:
         for key_id in list_of_gpg_ids:
             file.write('{key}\n'.format(key=key_id))
-
-
-def recursive_reencrypt(path_to_folder, list_of_keys, gpg_home=None, additional_parameter=None):
-    """
-    recursively reencrypts all files in a given path with the respective gpg public keys
-    :param additional_parameter: gpg parameter - DO NOT USE THIS Except for testing purposes
-    :param gpg_home: gpg_home directory to use
-    :param path_to_folder: complete path to root folder
-    :param list_of_keys: list of strings
-    :return: None
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('recursive_reencrypt: path_to_folder: %r', path_to_folder)
-    logger.debug('recursive_reencrypt: list_of_keys: %r', list_of_keys)
-    logger.debug('recursive_reencrypt: gpg_home: %r', gpg_home)
-    logger.debug('recursive_reencrypt: additional_parameter: %r', additional_parameter)
-    for file_ in listdir(path_to_folder):
-        if Path(path_to_folder, file_).is_dir():
-            logger.debug('recursive_reencrypt: folder: %r %r', path_to_folder, file_)
-            if Path(path_to_folder, file_, '.gpg-id').exists():
-                logger.debug('recursive_reencrypt: has .gpg-id file')
-            else:
-                logger.debug('recursive_reencrypt: does not have .gpg-id file')
-                recursive_reencrypt(Path(path_to_folder, file_),
-                                    list_of_keys,
-                                    gpg_home,
-                                    additional_parameter)
-        else:
-            logger.debug('recursive_reencrypt: file: %r %r', path_to_folder, file_)
-            if file_[-4:] == '.gpg':
-                logger.debug('recursive_reencrypt: gpg_file')
-                file_path = Path(path_to_folder, file_)
-                cleartext = decrypt(file_path, gpg_home=gpg_home,
-                                    additional_parameter=additional_parameter)
-                encrypt(clear_text=cleartext.encode(),
-                        list_of_recipients=list_of_keys,
-                        path_to_file=file_path,
-                        gpg_home=gpg_home)
-    logger.debug('recursive_reencrypt: done with %r', path_to_folder)

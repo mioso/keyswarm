@@ -146,13 +146,12 @@ class PasswordSearch:
             # pylint: disable=no-member
             logger.debug('load_search_index: %r', list(searcher.all_stored_fields()))
 
-    def store_search_index(self, stored_index_path):
+    def store_search_index(self, stored_index_path, recipients):
         """
         store the index in a gpg-encrypted file
         """
         logger = logging.getLogger(__name__)
         logger.debug('PasswordSearch.store_search_index: stored_index_path: %r', stored_index_path)
-        recipients = ['user@example'] #TODO
         encrypt(pickle.dumps(self.__storage.files), recipients, stored_index_path)
 
     @staticmethod
@@ -171,27 +170,35 @@ class PasswordSearch:
                 if glob_suffix:
                     logger.debug('modify_query: glob')
                     return Wildcard(query.fieldname, f'*{query.text}*')
-                else:
-                    logger.debug('modify_query: prefix glob')
-                    return Wildcard(query.fieldname, f'*{query.text}')
-            elif glob_suffix:
+                logger.debug('modify_query: prefix glob')
+                return Wildcard(query.fieldname, f'*{query.text}')
+            if glob_suffix:
                 logger.debug('modify_query: suffix glob')
                 return Prefix(query.fieldname, query.text)
-            elif fuzzy:
+            if fuzzy:
                 logger.debug('modify_query: fuzzy')
                 return FuzzyTerm(query.fieldname, query.text)
-            else:
-                logger.debug('modify_query: invalid flag permutation: %r', (glob_prefix, glob_suffix, fuzzy))
-                raise ValueError(f'invalid flag permutation: {(glob_prefix, glob_suffix, fuzzy)}')
-        else:
-            try:
-                query.subqueries = list(map(lambda a: PasswordSearch.modify_query(a, glob_prefix, glob_suffix, fuzzy), query.subqueries))
-                return query
-            except AttributeError:
-                logger.debug('modify_query: no subqueries')
-                return query
+            logger.debug('modify_query: invalid flag permutation: %r',
+                         (glob_prefix, glob_suffix, fuzzy))
+            raise ValueError(f'invalid flag permutation: {(glob_prefix, glob_suffix, fuzzy)}')
+        try:
+            query.subqueries = list(map(lambda a: PasswordSearch.modify_query(
+                a, glob_prefix, glob_suffix, fuzzy), query.subqueries))
+            return query
+        except AttributeError:
+            logger.debug('modify_query: no subqueries')
+            return query
 
     def search(self, raw_query, glob_prefix=False, glob_suffix=True, fuzzy=False):
+        """
+        perform a search on the internal index
+
+        :param raw_query: string the search query as entered by the user
+        :param glob_prefix: Boolean wether to prefix every term with `*`
+        :param glob_suffix: Boolean wether to suffix every term with `*`
+        :param fuzzy: Boolean wether to suffix every term with `~`
+        :param return: [dict]
+        """
         logger = logging.getLogger(__name__)
         logger.debug('search: raw_query: %r %r %r %r', raw_query, glob_prefix, glob_suffix, fuzzy)
         if not self.is_initialized():

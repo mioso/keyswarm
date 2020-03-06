@@ -18,9 +18,9 @@ from PySide2.QtGui import QIcon
 from .config import get_config
 from .ui_recipients import RecipientList
 from .ui_filesystem_tree import PassUiFileSystemTree
-from .pass_file_system import create_password_file, create_folder, initialize_password_store
-from .gpg_handler import (write_gpg_id_file, recursive_reencrypt, generate_keypair,
-                          import_gpg_keys, list_available_keys)
+from .pass_file_system import (create_password_file, create_folder, initialize_password_store,
+                               recursive_reencrypt)
+from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
 from .ui_password_view import PasswordView
 from .ui_password_dialog import PasswordDialog
 from .search import PasswordSearch

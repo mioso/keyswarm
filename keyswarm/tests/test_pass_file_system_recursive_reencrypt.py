@@ -3,7 +3,8 @@ from os import path, system
 from base64 import b64decode
 from subprocess import run
 
-from keyswarm.gpg_handler import recursive_reencrypt, list_packets, get_binary
+from keyswarm.gpg_handler import list_packets, get_binary
+from keyswarm.pass_file_system import recursive_reencrypt
 from . import private_key, eddsa_private_key, encrypted_file
 
 def test_gpg_handler_recursive_reencrypt_no_recursion():
