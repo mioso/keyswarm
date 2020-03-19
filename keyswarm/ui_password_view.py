@@ -10,7 +10,6 @@ from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
 
 from .pass_clipboard import copy
-from .pass_file_system import change_password_file
 from .ui_password_dialog import PasswordDialog
 
 
@@ -51,13 +50,13 @@ class PasswordView(QGroupBox):
         self.password_field.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         self.password_field.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_field.setReadOnly(True)
-        copy_password_button = QPushButton('&copy')
+        copy_password_button = QPushButton('&Copy')
         copy_password_button.setShortcut('Ctrl+c')
         copy_password_button.clicked.connect(self.copy_password)
-        edit_password_button = QPushButton('&edit')
+        edit_password_button = QPushButton('&Edit')
         edit_password_button.setShortcut('Ctrl+e')
         edit_password_button.clicked.connect(self.edit_password)
-        view_password_button = QPushButton('&toggle')
+        view_password_button = QPushButton('&Toggle')
         view_password_button.setShortcut('Ctrl+t')
         view_password_button.clicked.connect(self.toggle_password_visibility)
         self.layout().addWidget(password_field_label, 0, 0)
@@ -99,11 +98,10 @@ class PasswordView(QGroupBox):
             self.pass_file = pass_dialog.to_pass_file()
             logger.debug('edit_password: self.pass_file.name: "%s"', self.pass_file.name)
             try:
-                change_password_file(path_to_old_folder=current_item.file_system_path,
-                                     old_name=old_name,
-                                     path_to_new_folder=current_item.file_system_path,
-                                     new_name=self.pass_file.name,
-                                     password_file=self.pass_file)
+                self.tree.file_system.change_password_file(
+                    path_to_old_folder=current_item.file_system_path, old_name=old_name,
+                    path_to_new_folder=current_item.file_system_path, new_name=self.pass_file.name,
+                    password_file=self.pass_file)
             except ValueError:
                 self.window().show_missing_key_error()
                 return

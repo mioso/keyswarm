@@ -1,15 +1,10 @@
 #!/usr/bin/env python
 
-from platform import machine, platform, processor, python_implementation, python_compiler, python_version, python_revision
-
-import logging
+"""
+starter script for keyswarm
+"""
 
 from keyswarm import main
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger()
-    logger.debug('running on: (%r, %r, %r)', machine(), processor(), platform())
-    logger.debug('interpreter: (%r, %r, %r, %r)', python_implementation(), python_compiler(), python_version(), python_revision())
-    logger.debug('starting main function')
     main()

@@ -10,7 +10,7 @@ from pathlib import PurePath
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMainWindow
 from PySide2.QtCore import Qt
-from .pass_file_system import handle, move_password_file, move_password_folder
+from .pass_file_system import PassFileSystem
 
 class PassUIFileSystemItem(QTreeWidgetItem):
     """
@@ -50,9 +50,11 @@ class PassUiFileSystemTree(QTreeWidget):
     """
     A Pass UI Tree representing the pass Filesystem
     """
-    def __init__(self, root):
+    def __init__(self, root, config, file_system=None):
         QTreeWidget.__init__(self)
         self.root = str(root)
+        self.config = config
+        self.file_system = file_system or PassFileSystem(root, config=config)
         self.setHeaderLabel('PasswordStore')
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -81,7 +83,7 @@ class PassUiFileSystemTree(QTreeWidget):
             node.setExpanded(True)
         file_system_path = path.join(node.file_system_path, node.name)
         for filesystem_item in listdir(file_system_path):
-            if filesystem_item not in ('.gpg-id', '.cfg', '.available-keys', '.git', '.gitignore'):
+            if filesystem_item[0] != '.':
                 child_node = PassUIFileSystemItem(file_system_path, filesystem_item)
                 child_node.setText(0, filesystem_item.replace('.gpg', ''))
                 node.addChild(child_node)
@@ -106,11 +108,12 @@ class PassUiFileSystemTree(QTreeWidget):
         logger.debug('select_item: self: %r', self)
         node = self.topLevelItem(0)
         logger.debug('select_item: node: %r', node)
+        logger.debug('select_item: root: %r', self.root)
         path_ = PurePath(path_to_folder.replace(self.root, ''))
         parts = path_.parts
         logger.debug('select_item: path_: %r', path_)
         logger.debug('select_item: parts: %r', parts)
-        if parts[0] == path_.root:
+        if parts and parts[0] == path_.root:
             parts = parts[1:]
         logger.debug('select_item: cleaned(parts): %r', parts)
 
@@ -126,7 +129,7 @@ class PassUiFileSystemTree(QTreeWidget):
                     node = child
                     break
 
-        if node_found:
+        if node_found or not parts:
             logger.debug('select_item: final node: %r', node)
             for i in range(node.childCount()):
                 child = node.child(i)
@@ -148,7 +151,8 @@ class PassUiFileSystemTree(QTreeWidget):
         logger = logging.getLogger(__name__)
         value = None
         try:
-            value = handle(self.currentItem().file_system_path, self.currentItem().name)
+            value = self.file_system.handle(self.currentItem().file_system_path,
+                                            self.currentItem().name)
             logger.debug('on_item_selection_changed: value: %r', value)
         except ValueError:
             self.window().right_content_frame.layout().setCurrentWidget(
@@ -202,15 +206,13 @@ class PassUiFileSystemTree(QTreeWidget):
             logger.debug('PassUiFileSystemTree: dropEvent: target_folder: %r', target_folder)
 
             if dragged_item.isfile:
-                move_password_file(path_to_old_folder=source_folder,
-                                   old_name=name,
-                                   path_to_new_folder=target_folder,
-                                   new_name=name)
+                self.file_system.move_password_file(
+                    path_to_old_folder=source_folder, old_name=name,
+                    path_to_new_folder=target_folder, new_name=name)
             else:
-                move_password_folder(path_to_old_parent_folder=source_folder,
-                                     old_name=name,
-                                     path_to_new_parent_folder=target_folder,
-                                     new_name=name)
+                self.file_system.move_password_folder(
+                    path_to_old_parent_folder=source_folder, old_name=name,
+                    path_to_new_parent_folder=target_folder, new_name=name)
 
             self.refresh_tree()
             self.select_item(target_folder, name)

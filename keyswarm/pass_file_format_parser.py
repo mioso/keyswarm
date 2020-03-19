@@ -2,9 +2,9 @@
 this module provides an interface to files in the format used by pass
 """
 
-from re import search, compile as re_compile
-from os import path
 import logging
+from re import search, compile as re_compile
+from pathlib import Path
 
 from .gpg_handler import decrypt
 
@@ -24,7 +24,7 @@ class PassFile():
             self.name = name
         logger.debug('PassFile.__init__: self.name: %r', self.name)
         self.root_path = root_path
-        gpg_file = path.join(root_path, name) if name and root_path else None
+        gpg_file = Path(root_path, name) if name and root_path else None
         self.file = gpg_file
         self.password = ''
         self.attributes = []
