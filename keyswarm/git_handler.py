@@ -399,8 +399,9 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
     :param commit_message: string message to add to the commit
     """
     logger = logging.getLogger(__name__)
-    logger.debug('git_commit_cycle: (%r, %r, %r, %r)', repository_path,
-                 file_paths, branch_name, commit_message)
+    logger.debug('git_commit_cycle: (%r, %r, %r, %r, %r, %r, %r, %r)', repository_path,
+                 file_paths, branch_name, commit_message, http_url, http_username,
+                 len(http_password) if http_password else None, network_timeout)
 
     if not path_belongs_to_repository(repository_path):
         return

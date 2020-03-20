@@ -18,12 +18,16 @@ class PassFileSystem():
     Interface to the pass file system with the given root path
     """
     def __init__(self, password_store_root, config=None, git_credentials=None):
+        logger = logging.getLogger(__name__)
+        logger.debug('PassFileSystem.__init__: (%r, %r, %r)', password_store_root, config,
+                     'git_credentials' if git_credentials else None)
+
         self.password_store_root = password_store_root
         self.config = config or {}
 
         try:
             if not git_credentials:
-                git_credentials = self.handle(password_store_root, '.git-credentials')
+                git_credentials = self.handle(password_store_root, '.git-credentials.gpg')
 
             if isinstance(git_credentials, PassFile):
                 attributes = dict(git_credentials.attributes)
@@ -36,6 +40,13 @@ class PassFileSystem():
                 raise ValueError
         except (FileNotFoundError, ValueError, KeyError):
             self.git_credentials = {'url': None, 'username': None, 'password': None}
+
+        logger.debug('PassFileSystem.__init__: %r', self)
+
+    def __repr__(self):
+        return 'PassFileSystem(%r, %r, %r)' % (
+            self.password_store_root, self.config,
+            'git_credentials' if self.git_credentials['password'] else None)
 
     def handle(self, root_path, name):
         """
