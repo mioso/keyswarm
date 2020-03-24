@@ -19,6 +19,7 @@ from PySide2.QtGui import QIcon
 from .config import get_config, save_config, get_user_config
 from .pass_file_system import PassFileSystem
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
+from .git_handler import GitError
 from .ui_recipients import RecipientList
 from .ui_filesystem_tree import PassUiFileSystemTree
 from .ui_password_view import PasswordView
@@ -36,7 +37,6 @@ class MainWindow(QMainWindow):
         logger = logging.getLogger()
         QMainWindow.__init__(self)
         self.config = get_config(password_store_root)
-        import_gpg_keys(password_store_root)
         try:
             self.get_user_key()
             logger.debug('trying to open password store')
@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         except FileNotFoundError:
             logger.debug('creating new password store')
             self.create_password_store(password_store_root)
+        import_gpg_keys(password_store_root)
         self.searcher = None
 
         exit_action = QAction('Exit', self)
@@ -188,10 +189,19 @@ class MainWindow(QMainWindow):
 
         try:
             if git_or_plain == 'git' and clone_or_init == 'clone':
-                repo_info = clone_password_store_dialog()
-                file_system = PassFileSystem.clone_password_store(password_store_root, repo_info,
-                                                                  self.config)
-                self.tree = PassUiFileSystemTree(password_store_root, self.config, file_system)
+                try:
+                    repo_info = clone_password_store_dialog()
+                    logger.debug('create_password_store: %r', repo_info)
+                    file_system = PassFileSystem.clone_password_store(
+                        password_store_root, repo_info, self.config)
+                    self.tree = PassUiFileSystemTree(password_store_root, self.config, file_system)
+                    return
+                except GitError as error:
+                    self.critical_error_message(str(error))
+                except ValueError as error:
+                    self.critical_error_message(str(error))
+                except Exception as error:
+                    self.critical_error_message(str(error))
             else:
                 user_key = self.get_user_key()
                 if not user_key:
@@ -211,7 +221,7 @@ class MainWindow(QMainWindow):
                                         (password_store_root,))
         except Exception as error: # pylint: disable=broad-except
             logger.warning(error)
-            self.critical_error_message(error)
+            self.critical_error_message(str(error))
 
     def get_user_key(self):
         """
@@ -219,25 +229,27 @@ class MainWindow(QMainWindow):
         Asks the user which key to select if gpg reports multiple private keys.
         """
         logger = logging.getLogger(__name__)
+        list_of_private_keys = list_available_keys(get_secret_keys=True)
+        logger.debug('get_user_key: list_of_private_keys: %r', list_of_private_keys)
 
         try:
             user_key_id = self.config['gpg']['user_key_id']
             logger.debug('get_user_key: config_key: %r', user_key_id)
-            return user_key_id
+            if user_key_id in list_of_private_keys:
+                return user_key_id
+            logger.debug('get_user_key: config_key not in list_of_private_keys')
         except (KeyError, TypeError):
             logger.debug('get_user_key: key not in config')
 
-        list_of_private_keys = list_available_keys(get_secret_keys=True)
-        logger.debug('get_user_key: list_of_private_keys: %r', list_of_private_keys)
-        if len(list_of_private_keys) == 0:
-            return generate_key_dialog()
-        if len(list_of_private_keys) == 1:
-            return list_of_private_keys[0]
-
         selection = selection_dialog(list_of_private_keys,
                                      "Which private key should be used?")
-        user_key_id = selection or generate_key_dialog()
-        logger.debug('get_user_key: user_key_id: %r', user_key_id)
+        try:
+            user_key_id = selection or generate_key_dialog()
+            logger.debug('get_user_key: user_key_id: %r', user_key_id)
+        except ValueError as error:
+            self.critical_error_message(f'Error while generating keypair:\n\n{str(error)}')
+        if not user_key_id:
+            self.critical_error_message('A GPG key needs to be selected or created.')
         try:
             self.config.add_section('gpg')
         except DuplicateSectionError:
@@ -439,6 +451,7 @@ def generate_key_dialog():
     Show a dialog to collect data required for gpg private key generation and generate
     said key returning the id of the generated key.
     :return: string id of the generated key
+    :throws ValueError: on gpg error (also when the user aborts the passphrase dialog)
     """
     logger = logging.getLogger(__name__)
     dialog = QDialog()

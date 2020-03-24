@@ -22,7 +22,7 @@ def try_decode(byteslike):
         logger.debug('try_decode: latin1')
         return byteslike.decode('latin1')
 
-    except Exception as error:
+    except Exception as error: #TODO
         logger.debug('try_decode: error: %r', error)
         logger.critical('try_decode: did not find an encoding')
         sys_exit(1)
@@ -135,7 +135,7 @@ def decrypt(path_to_file, gpg_home=None, additional_parameter=None, utf8=True):
         raise FileNotFoundError
     if re_match(rb".*no valid OpenPGP data found.*", stderr, DOTALL):
         raise ValueError('no valid openpgp data found')
-    raise ValueError('unkown gpg error: %r' % (stderr,))
+    raise ValueError('unkown gpg error: %r' % (try_decode(stderr),))
 
 
 def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
@@ -179,7 +179,7 @@ def encrypt(clear_text, list_of_recipients, path_to_file=None, gpg_home=None):
     if re_match(rb'.*\[GNUPG:\] INV_RECP.*', stderr, DOTALL):
         raise ValueError('no public key')
     if re_match(rb'.*\[GNUPG:\] FAILURE encrypt.*', stderr, DOTALL):
-        raise ValueError('unknown gpg error')
+        raise ValueError('unknown gpg error: %r' % (try_decode(stderr),))
     if path_to_file:
         with open(path_to_file, 'bw') as file:
             file.write(stdout)
@@ -256,7 +256,7 @@ def generate_keypair(key_id, key_length=4096, expiration_date=None, additional_p
                 logger.debug('generate_keypair: key_id: %r', key_id)
                 return key_id
         raise ValueError('gpg returned no uid line')
-    raise ValueError(stderr)
+    raise ValueError(try_decode(stderr))
 
 def import_gpg_keys(root_path):
     """
@@ -272,11 +272,11 @@ def import_gpg_keys(root_path):
         logger.debug('import_gpg_keys: key directory exists')
         key_files = list(map(str, filter(lambda a: True, map(lambda a: Path(key_directory, a),
                                                              listdir(key_directory)))))
-        logger.debug('%r', key_files)
-        logger.debug('%r', *key_files)
+        logger.debug('key_files: %r', key_files)
         if key_files:
-            gpg_subprocess = Popen([get_binary(), '--with-colons', '-status-fd=2', '--import',
-                                    *key_files], stdout=PIPE, stderr=PIPE)
+            gpg_command = [get_binary(), '--with-colons', '--status-fd=2', '--import', *key_files]
+            logger.debug('import_gpg_keys: gpg_command: %r', gpg_command)
+            gpg_subprocess = Popen(gpg_command, stdout=PIPE, stderr=PIPE)
             stdout, stderr = gpg_subprocess.communicate()
             logger.debug('import_gpg_keys: stdout: %r', stdout)
             logger.debug('import_gpg_keys: stderr: %r', stderr)
