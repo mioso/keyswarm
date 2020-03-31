@@ -177,6 +177,48 @@ def repository_has_remote(repository_path):
     return stdout and len(stdout) > 0
 
 
+def repository_config_has_user_data(repository_path):
+    """
+    returns wether the repository config has a username and email needed to create a commit
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('repository_config_has_user_data: (%r)', repository_path)
+
+    for property_ in ['user.name', 'user.email']:
+        git_cmd = [get_binary(), 'config', property_]
+        logger.debug('repository_config_has_user_data: git_cmd: %r', git_cmd)
+        git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = git_process.communicate(timeout=2)
+        return_code = git_process.returncode
+        logger.debug('repository_config_has_user_data: return_code: %r', return_code)
+        logger.debug('repository_config_has_user_data: stdout: %r', stdout)
+        logger.debug('repository_config_has_user_data: stderr: %r', stderr)
+        if return_code != 0:
+            return False
+
+    return True
+
+
+def repository_config_set_user_data(repository_path, user_name, user_email):
+    logger = logging.getLogger(__name__)
+    logger.debug('repository_config_set_user_data: (%r, %r, %r)',
+                 repository_path, user_name, user_email)
+
+    result = True
+    for key, value in [('user.name', user_name), ('user.email', user_email)]:
+        git_cmd = [get_binary(), 'config', key, value]
+        logger.debug('repository_config_set_user_data: git_cmd: %r', git_cmd)
+        git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = git_process.communicate()
+        return_code = git_process.returncode
+        logger.debug('repository_config_set_user_data: return_code: %r', return_code)
+        logger.debug('repository_config_set_user_data: stdout: %r', stdout)
+        logger.debug('repository_config_set_user_data: stderr: %r', stderr)
+        result = result and (return_code == 0)
+
+    return result
+
+
 def git_init(directory_path):
     """
     performs `git init` on the given directory

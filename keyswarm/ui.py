@@ -36,6 +36,7 @@ class MainWindow(QMainWindow):
         # pylint: disable=too-many-statements
         logger = logging.getLogger()
         QMainWindow.__init__(self)
+        self.password_store_root = password_store_root
         self.config = get_config(password_store_root)
         try:
             self.get_user_key()
@@ -61,6 +62,11 @@ class MainWindow(QMainWindow):
         add_pass_action.setShortcut('Ctrl+p')
         add_pass_action.triggered.connect(self.add_password)
         self.menuBar().addAction(add_pass_action)
+
+        refresh_action = QAction('&Refresh', self)
+        refresh_action.setShortcut('Ctrl+r')
+        refresh_action.triggered.connect(self.refresh_password_store)
+        self.menuBar().addAction(refresh_action)
 
         self.main_frame = QFrame()
         self.main_frame.setLayout(QVBoxLayout())
@@ -379,6 +385,14 @@ class MainWindow(QMainWindow):
                                       name=pass_dialog.password_name_input.text())
             except ValueError:
                 self.show_missing_key_error()
+
+    def refresh_password_store(self):
+        """
+        Refreshes the password store and reloads it.
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug('refresh_password_store')
+        self.tree = PassUiFileSystemTree(self.password_store_root, self.config)
 
     def reencrypt_files(self):
         """

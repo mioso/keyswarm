@@ -5,11 +5,14 @@ provides an interface to the pass file system
 import logging
 from os import listdir, mkdir, rmdir, remove, walk
 from pathlib import Path
+from re import compile as re_compile
 from shutil import move
 from datetime import datetime as dt
 
 from .gpg_handler import decrypt, encrypt, get_recipients_from_gpg_id, write_gpg_id_file
-from .git_handler import git_init, git_add, git_commit, git_clone, git_commit_cycle
+from .git_handler import (git_init, git_add, git_commit, git_clone, git_pull, git_commit_cycle,
+                          repository_config_has_user_data, repository_config_set_user_data,
+                          path_belongs_to_repository, repository_has_remote)
 from .pass_file_format_parser import PassFile
 
 
@@ -40,6 +43,13 @@ class PassFileSystem():
                 raise ValueError
         except (FileNotFoundError, ValueError, KeyError):
             self.git_credentials = {'url': None, 'username': None, 'password': None}
+
+        if (path_belongs_to_repository(password_store_root) and
+                repository_has_remote(password_store_root)):
+            git_pull(repository_path=password_store_root,
+                     http_url=self.git_credentials['url'],
+                     http_username=self.git_credentials['username'],
+                     http_password=self.git_credentials['password'])
 
         logger.debug('PassFileSystem.__init__: %r', self)
 
@@ -472,28 +482,36 @@ class PassFileSystem():
         logger = logging.getLogger(__name__)
         logger.debug('clone_password_store: (%r, %r)', password_store_root, repo_info)
 
+        own_key_id = config['gpg']['user_key_id']
         if len(repo_info['ssh']['url']) > 0:
             git_clone(repository_path=password_store_root, url=repo_info['ssh']['url'])
-            return PassFileSystem(password_store_root, config)
+            file_system = PassFileSystem(password_store_root, config)
+        else:
+            git_clone(repository_path=password_store_root,
+                      url=repo_info['http']['url'],
+                      http_username=repo_info['http']['username'],
+                      http_password=repo_info['http']['password'],
+                      timeout=config.get('network', 'timeout', fallback=60))
+            git_auth = PassFile()
+            git_auth.password = repo_info['http']['password']
+            git_auth.attributes.append(('username', repo_info['http']['username']))
+            git_auth.attributes.append(('url', repo_info['http']['url']))
+            git_auth.root_path = password_store_root
+            git_auth.name = '.git_credentials'
 
-        own_key_id = config['gpg']['user_key_id']
-        git_clone(repository_path=password_store_root,
-                  url=repo_info['http']['url'],
-                  http_username=repo_info['http']['username'],
-                  http_password=repo_info['http']['password'],
-                  timeout=config.get('network', 'timeout', fallback=60))
-        git_auth = PassFile()
-        git_auth.password = repo_info['http']['password']
-        git_auth.attributes.append(('username', repo_info['http']['username']))
-        git_auth.attributes.append(('url', repo_info['http']['url']))
-        git_auth.root_path = password_store_root
-        git_auth.name = '.git_credentials'
+            clear_text = git_auth.get_cleartext().encode()
+            logger.debug('clone_password_store: len(clear_text): %r', len(clear_text))
+            path_to_file = Path(password_store_root, '.git-credentials.gpg')
+            logger.debug('clone_password_store: path_to_file: %r', path_to_file)
+            encrypt(clear_text=clear_text,
+                    list_of_recipients=[own_key_id],
+                    path_to_file=path_to_file)
+            file_system = PassFileSystem(password_store_root, config, git_auth)
 
-        clear_text = git_auth.get_cleartext().encode()
-        logger.debug('clone_password_store: len(clear_text): %r', len(clear_text))
-        path_to_file = Path(password_store_root, '.git-credentials.gpg')
-        logger.debug('clone_password_store: path_to_file: %r', path_to_file)
-        encrypt(clear_text=clear_text,
-                list_of_recipients=[own_key_id],
-                path_to_file=path_to_file)
-        return PassFileSystem(password_store_root, config, git_auth)
+        if not repository_config_has_user_data(password_store_root):
+            regex = re_compile('^([^<]+) <([^>]+)>$')
+            match = regex.match(own_key_id)
+            user_name, user_email = match.groups()
+            repository_config_set_user_data(password_store_root, user_name, user_email)
+
+        return file_system
