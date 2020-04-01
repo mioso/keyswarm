@@ -1,10 +1,11 @@
-from tempfile import TemporaryDirectory
+from base64 import b64decode
 from os import path
 from subprocess import run
-from base64 import b64decode
-from . import private_key
+from tempfile import TemporaryDirectory
+
 from keyswarm.gpg_handler import list_available_keys
 
+from . import private_key
 
 def test_list_available_keys():
     with TemporaryDirectory() as tmpdirname:
@@ -15,9 +16,9 @@ def test_list_available_keys():
              '--batch',
              '--passphrase', 'test',
              '--import', path.join(tmpdirname, 'sec_key.asc')])
-        assert list_available_keys(['--homedir', tmpdirname]) == ['tester@test.com']
+        assert list_available_keys(['--homedir', tmpdirname]) == ['tester <tester@test.com>']
 
 
 def test_list_available_keys_no_key_available():
     with TemporaryDirectory() as tmpdirname:
-        assert list_available_keys(['--homedir', tmpdirname]) == list()
+        assert list_available_keys(['--homedir', tmpdirname]) == []

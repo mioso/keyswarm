@@ -1,8 +1,11 @@
 venv/*
 env/*
 *.pyc
+*.pyo
 .idea/*
 multipass/__pycache__/*.pyc
 .pytest_cache
 .*.swp
 .*.swo
+build/*
+dist/*

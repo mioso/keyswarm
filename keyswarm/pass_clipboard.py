@@ -1,6 +1,11 @@
-import clipboard
+"""
+this module provides clipboard interaction with auto clear
+"""
+
 from multiprocessing import Process
 from time import sleep
+
+import clipboard
 
 
 def copy(text, clear_after=40):
