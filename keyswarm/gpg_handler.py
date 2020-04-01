@@ -231,30 +231,57 @@ def list_available_keys(additional_parameter=None, get_secret_keys=False):
             list_of_packet_ids.append(key_id)
     return list_of_packet_ids
 
-def generate_keypair(key_id, key_length=4096, expiration_date=None, additional_parameter=None):
-    """
-    generates a gpg keypair
-    """
+def __get_key_id_from_fingerprint__(fingerprint):
     logger = logging.getLogger(__name__)
-    logger.debug('generate_private_key: key_id: %r', key_id)
-    logger.debug('generate_private_key: key_length: %r', key_length)
-    logger.debug('generate_private_key: expiration_date: %r', expiration_date)
-    additional_parameter = additional_parameter or []
-    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=2', '--quick-gen-key',
-                            key_id, *additional_parameter], stdout=PIPE, stderr=PIPE)
+    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=2',
+                            '--list-secret-keys', fingerprint],
+                           stdout=PIPE, stderr=PIPE)
     stdout, stderr = gpg_subprocess.communicate()
-    logger.debug('generate_keypair: stdout: %r', stdout)
-    logger.debug('generate_keypair: stderr: %r', stderr)
+    logger.debug('__get_key_id_from_fingerprint__: stdout: %r', stdout)
+    logger.debug('__get_key_id_from_fingerprint__: stderr: %r', stderr)
 
     if stdout:
         lines = try_decode(stdout).splitlines()
         regex = re_compile(r'^uid:.*')
         for line in lines:
-            logger.debug('generate_keypair: line: %r', line)
+            logger.debug('__get_key_id_from_fingerprint__: line: %r', line)
             if regex.match(line):
                 key_id = line.split(':')[9]
                 logger.debug('generate_keypair: key_id: %r', key_id)
                 return key_id
+        raise ValueError(f'no key for fingerprint {fingerprint}')
+    raise ValueError(try_decode(stderr))
+
+def generate_keypair(name, email, key_length=4096, expiration_date=0, additional_parameter=None):
+    """
+    generates a gpg keypair
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('generate_keypair: name: %r', name)
+    logger.debug('generate_keypair: email: %r', email)
+    logger.debug('generate_keypair: key_length: %r', key_length)
+    logger.debug('generate_keypair: expiration_date: %r', expiration_date)
+    additional_parameter = additional_parameter or []
+    gpg_subprocess = Popen([get_binary(), '--with-colons', '--status-fd=1', '--batch',
+                            '--full-generate-key', '--expert', *additional_parameter],
+                           stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    stdout, stderr = gpg_subprocess.communicate(input=(
+        f'Key-Type: rsa\nKey-Length: {key_length}\nKey-Usage: sign\n'
+        f'Subkey-Type: rsa\nSubkey-Length: {key_length}\nSubkey-Usage: encrypt\n'
+        f'Name-Real: {name}\nName-Email: {email}\nExpire-Date: {expiration_date}\n%commit'
+        ).encode('utf-8'))
+    logger.debug('generate_keypair: stdout: %r', stdout)
+    logger.debug('generate_keypair: stderr: %r', stderr)
+
+    if stdout:
+        lines = try_decode(stdout).splitlines()
+        regex = re_compile(r'^\[GNUPG:\] KEY_CREATED.*')
+        for line in lines:
+            logger.debug('generate_keypair: line: %r', line)
+            if regex.match(line):
+                fingerprint = line.split(' ')[-1]
+                logger.debug('generate_keypair: fingerprint: %r', fingerprint)
+                return __get_key_id_from_fingerprint__(fingerprint)
         raise ValueError('gpg returned no uid line')
     raise ValueError(try_decode(stderr))
 

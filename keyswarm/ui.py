@@ -483,9 +483,9 @@ def generate_key_dialog():
     dialog.layout().addRow(bottom_row_layout)
 
     if dialog.exec_():
-        key_id = f'{name_edit.text()} <{email_edit.text()}>'
-        logger.debug('generate_key_dialog: key_id: %r', key_id)
-        return generate_keypair(key_id)
+        #key_id = f'{name_edit.text()} <{email_edit.text()}>'
+        #logger.debug('generate_key_dialog: key_id: %r', key_id)
+        return generate_keypair(name_edit.text(), email_edit.text())
     return None
 
 
