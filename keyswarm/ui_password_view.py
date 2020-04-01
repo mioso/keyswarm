@@ -9,6 +9,7 @@ import logging
 from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
 
+from .git_handler import GitError
 from .pass_clipboard import copy
 from .ui_password_dialog import PasswordDialog
 
@@ -102,6 +103,8 @@ class PasswordView(QGroupBox):
                     path_to_old_folder=current_item.file_system_path, old_name=old_name,
                     path_to_new_folder=current_item.file_system_path, new_name=self.pass_file.name,
                     password_file=self.pass_file)
+            except GitError as error:
+                self.window().show_error(error.__repr__())
             except ValueError:
                 self.window().show_missing_key_error()
                 return

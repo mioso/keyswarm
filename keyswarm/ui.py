@@ -13,17 +13,20 @@ from sys import exit as sys_exit
 from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QAction,
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
                                QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
-                               QButtonGroup, QRadioButton, QComboBox, QFormLayout, QTabWidget)
+                               QButtonGroup, QRadioButton, QFormLayout)
 from PySide2.QtGui import QIcon
 
 from .config import get_config, save_config, get_user_config
-from .pass_file_system import PassFileSystem
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
 from .git_handler import GitError
-from .ui_recipients import RecipientList
+from .name_filter import is_valid_file_name
+from .pass_file_system import PassFileSystem
 from .ui_filesystem_tree import PassUiFileSystemTree
+from .ui_helper import (apply_error_style_to_widget, selection_dialog,
+                        a_b_dialog_or_exit, confirm_error, clone_password_store_dialog)
 from .ui_password_view import PasswordView
 from .ui_password_dialog import PasswordDialog
+from .ui_recipients import RecipientList
 from .search import PasswordSearch
 
 
@@ -34,8 +37,14 @@ class MainWindow(QMainWindow):
     # pylint: disable=too-many-instance-attributes
     def __init__(self, password_store_root):
         # pylint: disable=too-many-statements
-        logger = logging.getLogger()
         QMainWindow.__init__(self)
+
+        logger = logging.getLogger()
+
+        self.main_frame = QFrame()
+        self.main_frame.setLayout(QVBoxLayout())
+        self.setCentralWidget(self.main_frame)
+
         self.password_store_root = password_store_root
         self.config = get_config(password_store_root)
         try:
@@ -45,6 +54,10 @@ class MainWindow(QMainWindow):
         except FileNotFoundError:
             logger.debug('creating new password store')
             self.create_password_store(password_store_root)
+        except GitError as error:
+            self.show_error(error.__repr__())
+            self.tree = PassUiFileSystemTree(password_store_root, self.config,
+                                             no_git_override=True)
         import_gpg_keys(password_store_root)
         self.searcher = None
 
@@ -68,9 +81,6 @@ class MainWindow(QMainWindow):
         refresh_action.triggered.connect(self.refresh_password_store)
         self.menuBar().addAction(refresh_action)
 
-        self.main_frame = QFrame()
-        self.main_frame.setLayout(QVBoxLayout())
-        self.setCentralWidget(self.main_frame)
 
         self.content_frame = QSplitter()
         self.content_frame.addWidget(self.tree)
@@ -206,7 +216,7 @@ class MainWindow(QMainWindow):
                     self.critical_error_message(str(error))
                 except ValueError as error:
                     self.critical_error_message(str(error))
-                except Exception as error:
+                except Exception as error: # pylint: disable=broad-except
                     self.critical_error_message(str(error))
             else:
                 user_key = self.get_user_key()
@@ -343,7 +353,14 @@ class MainWindow(QMainWindow):
         confirm_button.setShortcut('Return')
         confirm_button.setText('OK')
         grid_layout.addWidget(confirm_button, 1, 1)
-        confirm_button.clicked.connect(folder_dialog.accept)
+
+        def folder_name_check():
+            if is_valid_file_name(folder_name_input.text()):
+                folder_dialog.accept()
+            else:
+                apply_error_style_to_widget(folder_name_input)
+
+        confirm_button.clicked.connect(folder_name_check)
 
         if folder_dialog.exec_():
             current_item = self.tree.currentItem()
@@ -379,12 +396,16 @@ class MainWindow(QMainWindow):
                     path_to_folder=password_dir,
                     name=pass_dialog.password_name_input.text(),
                     password_file=password_file)
-
-                self.tree.refresh_tree()
-                self.tree.select_item(path_to_folder=password_dir,
-                                      name=pass_dialog.password_name_input.text())
+            except GitError as error:
+                self.show_error(error.__repr__())
             except ValueError:
                 self.show_missing_key_error()
+            finally:
+                self.tree.refresh_tree()
+                self.create_new_search_index()
+                self.tree.select_item(path_to_folder=password_dir,
+                                      name=pass_dialog.password_name_input.text())
+
 
     def refresh_password_store(self):
         """
@@ -393,6 +414,7 @@ class MainWindow(QMainWindow):
         logger = logging.getLogger(__name__)
         logger.debug('refresh_password_store')
         self.tree = PassUiFileSystemTree(self.password_store_root, self.config)
+        self.create_new_search_index()
 
     def reencrypt_files(self):
         """
@@ -417,6 +439,8 @@ class MainWindow(QMainWindow):
         try:
             self.tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
             write_gpg_id_file(gpg_id_path, list_of_keys)
+        except GitError as error:
+            self.show_error(error.__repr__())
         except ValueError:
             self.show_missing_key_error()
 
@@ -438,21 +462,20 @@ class MainWindow(QMainWindow):
         error_widget.setLayout(QHBoxLayout())
         error_widget.layout().addWidget(QLabel(error_message))
         error_widget.layout().addStretch(2**16)
-        error_widget.setStyleSheet('''
-QFrame {
-    margin: 0px;
-    padding: 0px;
-    color: white;
-    background-color: darkred;
-    border-radius: 0.5em;
-}
-
-QPushButton {
-    color: white;
-    background-color: #00000000;
-    border-style: none;
-}
-        ''')
+        error_widget.setStyleSheet((
+            'QFrame {'
+            '    margin: 0px;'
+            '    padding: 0px;'
+            '    color: white;'
+            '    background-color: darkred;'
+            '    border-radius: 0.5em;'
+            '}'
+            ''
+            'QPushButton {'
+            '    color: white;'
+            '    background-color: #00000000;'
+            '    border-style: none;'
+            '}'))
         error_confirm_button = QPushButton()
         error_confirm_button.setIcon(QIcon.fromTheme('window-close'))
         error_confirm_button.clicked.connect(partial(confirm_error, error_widget))
@@ -483,184 +506,10 @@ def generate_key_dialog():
     dialog.layout().addRow(bottom_row_layout)
 
     if dialog.exec_():
-        #key_id = f'{name_edit.text()} <{email_edit.text()}>'
-        #logger.debug('generate_key_dialog: key_id: %r', key_id)
+        logger.debug('generate_key_dialog: name: %r', name_edit.text())
+        logger.debug('generate_key_dialog: email: %r', email_edit.text())
         return generate_keypair(name_edit.text(), email_edit.text())
     return None
-
-
-def clone_password_store_dialog():
-    """
-    Show a dialog to collect data required to clone the password store
-    """
-    logger = logging.getLogger(__name__)
-    dialog = QDialog()
-    dialog.setWindowTitle('Repository URL')
-    dialog.setLayout(QVBoxLayout())
-    tab_widget = QTabWidget()
-    dialog.layout().addWidget(tab_widget)
-
-    ssh_frame = QFrame()
-    ssh_frame.setLayout(QFormLayout())
-    ssh_url_edit = QLineEdit()
-    ssh_frame.layout().addRow(dialog.tr('U&RL'), ssh_url_edit)
-    tab_widget.addTab(ssh_frame, 'SSH')
-
-    http_frame = QFrame()
-    http_frame.setLayout(QFormLayout())
-    http_url_edit = QLineEdit()
-    http_username_edit = QLineEdit()
-    http_password_edit = QLineEdit()
-    http_frame.layout().addRow(dialog.tr('U&RL'), http_url_edit)
-    http_frame.layout().addRow(dialog.tr('&Username'), http_username_edit)
-    http_frame.layout().addRow(dialog.tr('&Password'), http_password_edit)
-    tab_widget.addTab(http_frame, 'HTTP')
-
-    button_frame = QFrame()
-    button_frame.setLayout(QVBoxLayout())
-    button_frame.layout().addStretch(2**16)
-    dialog.layout().addWidget(button_frame)
-    button_accept = QPushButton('&Accept')
-    button_accept.clicked.connect(dialog.accept)
-    button_frame.layout().addWidget(button_accept)
-
-    if dialog.exec_():
-        result = {
-            'ssh': {
-                'url': ssh_url_edit.text()
-            },
-            'http': {
-                'url': http_url_edit.text(),
-                'username': http_username_edit.text(),
-                'password': http_password_edit.text()
-            },
-        }
-        logger.debug('clone_password_store_dialog: result: %r', result)
-        return result
-    logger.debug('clone_password_store_dialog: aborted')
-    return None
-
-
-def selection_dialog(list_of_options, window_title, label_text=None):
-    """
-    Show a selection dialog with a list of options to select from and return the selected
-    option or None if the dialog was canceled.
-    :param list_of_options: [string] options to select from
-    :param window_title: string title of the dialog window
-    :param label_text: Maybe(string) text of an optional label above the selection
-    :return: Maybe(string) one element of the list of options or None
-    """
-    logger = logging.getLogger(__name__)
-    if not list_of_options:
-        return None
-    dialog = QDialog()
-    dialog.setWindowTitle(window_title)
-    dialog.setLayout(QVBoxLayout())
-    if label_text:
-        dialog.layout().addWidget(QLabel(label_text))
-    selection = QComboBox()
-    selection.addItems(list_of_options)
-    dialog.layout().addWidget(selection)
-    frame = QFrame()
-    frame.setLayout(QHBoxLayout())
-    frame.layout().addStretch(2**16)
-    button_accept = QPushButton('&Accept')
-    button_accept.clicked.connect(dialog.accept)
-    frame.layout().addWidget(button_accept)
-    dialog.layout().addWidget(frame)
-
-    if dialog.exec_():
-        logger.debug('get_user_key: currentText: %r', selection.currentText())
-        return selection.currentText()
-    logger.debug('get_user_key: aborted')
-    return None
-
-
-def a_b_dialog(option_a, option_b, window_title, label_a=None, label_b=None, label_text=None):
-    # pylint: disable=too-many-arguments
-    """
-    Show an A B selection dialog to the user with an optional label text
-
-    :param option_a: string the first option
-    :param option_b: string the second option
-    :param window_title: string title of the dialog window
-    :param label_a: string optional text of the first button
-    :param label_b: string optional text of the second button
-    :param label_text: string optional text shown above the buttons
-    :return: Maybe(string) the selected option or None if dialog window is closed
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('a_b_dialog: (%r, %r, %r, %r, %r, %r)', option_a, option_b, window_title,
-                 label_a, label_b, label_text)
-    label_a = label_a or option_a
-    label_b = label_b or option_b
-    dialog = QDialog()
-    dialog.setWindowTitle(window_title)
-    dialog.setLayout(QVBoxLayout())
-    if label_text:
-        text_label = QLabel(label_text)
-        text_label.setWordWrap(True)
-        dialog.layout().addWidget(text_label)
-    dialog.selection = None
-    button_a = QPushButton(label_a)
-    button_b = QPushButton(label_b)
-    def function_a():
-        dialog.selection = option_a
-        dialog.accept()
-    def function_b():
-        dialog.selection = option_b
-        dialog.accept()
-    button_a.clicked.connect(function_a)
-    button_b.clicked.connect(function_b)
-    dialog.layout().addStretch(2*16)
-    frame = QFrame()
-    frame.setLayout(QHBoxLayout())
-    frame.layout().addWidget(button_a)
-    frame.layout().addStretch(2*16)
-    frame.layout().addWidget(button_b)
-    dialog.layout().addWidget(frame)
-    if dialog.exec_():
-        logger.debug('a_b_dialog: result: %r', dialog.selection)
-        return dialog.selection
-    logger.debug('a_b_dialog: aborted')
-    return None
-
-
-def a_b_dialog_or_exit(option_a, option_b, window_title, label_a=None, label_b=None,
-                       label_text=None):
-    """
-    Show an A B selection dialog to the user with an optional label text.
-    If the user closes the dialog window without choosing an option, another
-    dialog is opened giving the choice to repeat the selection or to exit
-    the application.
-
-    :param option_a: string the first option
-    :param option_b: string the second option
-    :param window_title: string title of the dialog window
-    :param label_a: string optional text of the first button
-    :param label_b: string optional text of the second button
-    :param label_text: string optional text shown above the buttons
-    :return: string the selected option
-    """
-    # pylint: disable=too-many-arguments
-    result = None
-    while not result:
-        result = a_b_dialog(
-            option_a, option_b, window_title, label_a, label_b, label_text)
-        if not result and not a_b_dialog(
-                None, 'retry', 'No Selection', label_a='&Exit', label_b='&Retry'):
-            sys_exit()
-    return result
-
-
-def confirm_error(error_widget):
-    """
-    Confirm an error message, removing the widget displaying it
-    :param error_widget: QWidget outer most container of the error message
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('confirm_error: %r', error_widget)
-    error_widget.setParent(None)
 
 
 def main():

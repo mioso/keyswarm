@@ -10,6 +10,8 @@ from pathlib import PurePath
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMainWindow
 from PySide2.QtCore import Qt
+
+from .git_handler import GitError
 from .pass_file_system import PassFileSystem
 
 class PassUIFileSystemItem(QTreeWidgetItem):
@@ -50,11 +52,12 @@ class PassUiFileSystemTree(QTreeWidget):
     """
     A Pass UI Tree representing the pass Filesystem
     """
-    def __init__(self, root, config, file_system=None):
+    def __init__(self, root, config, file_system=None, no_git_override=False):
         QTreeWidget.__init__(self)
         self.root = str(root)
         self.config = config
-        self.file_system = file_system or PassFileSystem(root, config=config)
+        self.file_system = file_system or PassFileSystem(root, config=config,
+                                                         no_git_override=no_git_override)
         self.setHeaderLabel('PasswordStore')
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -213,10 +216,12 @@ class PassUiFileSystemTree(QTreeWidget):
                 self.file_system.move_password_folder(
                     path_to_old_parent_folder=source_folder, old_name=name,
                     path_to_new_parent_folder=target_folder, new_name=name)
-
-            self.refresh_tree()
-            self.select_item(target_folder, name)
+        except GitError as error:
+            self.window().show_error(error.__repr__())
         except IndexError as error:
             logger.warning('PassIoFileSystemTree: dropEvent: %r', error)
         except ValueError as error:
             logger.warning('PassIoFileSystemTree: dropEvent: %r', error)
+        finally:
+            self.refresh_tree()
+            self.select_item(target_folder, name)

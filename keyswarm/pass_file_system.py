@@ -20,7 +20,8 @@ class PassFileSystem():
     """
     Interface to the pass file system with the given root path
     """
-    def __init__(self, password_store_root, config=None, git_credentials=None):
+    def __init__(self, password_store_root, config=None, git_credentials=None,
+                 no_git_override=False):
         logger = logging.getLogger(__name__)
         logger.debug('PassFileSystem.__init__: (%r, %r, %r)', password_store_root, config,
                      'git_credentials' if git_credentials else None)
@@ -44,7 +45,8 @@ class PassFileSystem():
         except (FileNotFoundError, ValueError, KeyError):
             self.git_credentials = {'url': None, 'username': None, 'password': None}
 
-        if (path_belongs_to_repository(password_store_root) and
+        if (not no_git_override and
+                path_belongs_to_repository(password_store_root) and
                 repository_has_remote(password_store_root)):
             git_pull(repository_path=password_store_root,
                      http_url=self.git_credentials['url'],
