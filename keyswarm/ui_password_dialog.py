@@ -13,7 +13,9 @@ from PySide2.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QTextEdit, QDialo
                                QTabWidget, QComboBox)
 
 from .generate_passwords import random_password
+from .name_filter import is_valid_file_name
 from .pass_file_format_parser import PassFile
+from .ui_helper import apply_error_style_to_widget, clear_widget_style_sheet
 
 
 class PasswordGenerationDialog(QDialog):
@@ -101,7 +103,7 @@ class PasswordGenerationDialog(QDialog):
         self.random_words.button_generate.clicked.connect(self.generate_random_words)
         self.random_words.layout().addWidget(self.random_words.button_generate)
 
-        self.tab_widget.addTab(self.random_words, 'Random Words')
+        #self.tab_widget.addTab(self.random_words, 'Random Words')
 
         bottom_row = QFrame()
         bottom_row.setLayout(QHBoxLayout())
@@ -170,9 +172,10 @@ class PasswordGenerationDialog(QDialog):
         logger = logging.getLogger(__name__)
         if self.password_view.preview_line.text() == '':
             logger.debug('PasswordGenerationDialog.accept: empty password')
-            return
-        logger.debug('PasswordGenerationDialog.accept: accept')
-        self.accept()
+            apply_error_style_to_widget(self.password_view.preview_line)
+        else:
+            logger.debug('PasswordGenerationDialog.accept: accept')
+            self.accept()
 
 
 class PasswordDialog(QDialog):
@@ -266,14 +269,20 @@ class PasswordDialog(QDialog):
         :return: None
         """
         logger = logging.getLogger(__name__)
-        if self.password_input.text() != self.pass_confirm_input.text():
-            logger.debug('PasswordDialog.confirm: password mismatch')
-            return
-        if self.password_name_input.text() == '':
+        clear_widget_style_sheet(self.password_name_input)
+        clear_widget_style_sheet(self.password_input)
+        clear_widget_style_sheet(self.pass_confirm_input)
+        if not is_valid_file_name(self.password_name_input.text()):
             logger.debug('PasswordDialog.confirm: empty name')
-            return
-        logger.debug('PasswordDialog.confirm: accept')
-        self.accept()
+            apply_error_style_to_widget(self.password_name_input)
+        elif self.password_input.text() == '':
+            apply_error_style_to_widget(self.password_input)
+        elif self.password_input.text() != self.pass_confirm_input.text():
+            logger.debug('PasswordDialog.confirm: password mismatch')
+            apply_error_style_to_widget(self.pass_confirm_input)
+        else:
+            logger.debug('PasswordDialog.confirm: accept')
+            self.accept()
 
     def __add_optional_field__(self, name, value='', placeholder=''):
         """
