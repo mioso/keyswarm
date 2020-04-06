@@ -174,9 +174,28 @@ def is_valid_branch_name(name):
                                GIT_PREFIX_BLACKLIST, GIT_SUFFIX_BLACKLIST,
                                GIT_SEQUENCE_BLACKLIST)
 
+def _trim_to_byte_length(name, byte_length):
+    logger = logging.getLogger(__name__)
+    logger.debug('trim_to_byte_length: (%r, %r)', name, byte_length)
+    logger.debug('trim_to_byte_length: len(name): %r', len(name))
+    logger.debug('trim_to_byte_length: byte_len(name) %r', len(name.encode('utf-8')))
+
+    if len(name.encode('utf-8')) <= byte_length:
+        logger.debug('trim_to_byte_length: length fine as is')
+        return name
+
+    name = name[:byte_length]
+
+    while len(name.encode('utf-8')) > byte_length:
+        name = name[:len(name)-1]
+
+    logger.debug('trim_to_byte_length: trimmed_name: %r', name)
+    logger.debug('trim_to_byte_length: len(trimmed_name): %r', len(name))
+    logger.debug('trim_to_byte_length: byte_len(trimmed_name): %r', len(name.encode('utf-8')))
+    return name
 
 def make_valid_name(name, name_blacklist, character_whitelist, prefix_blacklist,
-                          suffix_blacklist, sequence_blacklist, fill_character):
+                    suffix_blacklist, sequence_blacklist, fill_character):
 # pylint: disable=too-many-arguments
     """
     modify a unicode name to not be equal to any blacklist entry, only contain whitelisted
@@ -210,13 +229,20 @@ def make_valid_name(name, name_blacklist, character_whitelist, prefix_blacklist,
     :param fill_character: one single utf-8 character
     """
     logger = logging.getLogger(__name__)
+    logger.debug(('make_valid_name: (name=%r, name_blacklist=%r, character_whitelist=%r, '
+                  'prefix_blacklist=%r, suffix_blacklist=%r, sequence_blacklist=%r, '
+                  'fill_character=%r)'),
+                 name, name_blacklist, character_whitelist, prefix_blacklist, suffix_blacklist,
+                 sequence_blacklist, fill_character)
     if not isinstance(fill_character, str) or len(fill_character) != 1:
+        logger.debug('make_valid_name: invalid fill character: %r', fill_character)
         raise ValueError('fill_character must be exactly one utf-8 character')
 
     if not name:
+        logger.debug('make_valid_name: no name, returning fill character')
         return fill_character
-    
-    fill_character_byte_length = TODO
+
+    fill_character_byte_length = len(fill_character.encode('utf-8'))
 
     class WhitelistTranslationTable:
         """
@@ -238,22 +264,33 @@ def make_valid_name(name, name_blacklist, character_whitelist, prefix_blacklist,
 
     table = WhitelistTranslationTable(character_whitelist)
     name = name.translate(table)
+    logger.debug('make_valid_name: filtered name: %r', name)
 
     for sequence in sequence_blacklist:
         if sequence: #prevent '' in the blacklist to place fill_character between all characters
             name = name.replace(sequence, fill_character)
 
+    logger.debug('make_valid_name: sequence filtered name: %r', name)
+
     lower_name = name.lower()
     if lower_name in name_blacklist:
-        return trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
+        name = _trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
+
+    logger.debug('make_valid_name: blacklist filtered name: %r', name)
 
     for prefix in prefix_blacklist:
         if lower_name.startswith(prefix):
-            return trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
-    
+            name = _trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
+
+    logger.debug('make_valid_name: prefix filtered name: %r', name)
+
     for suffix in suffix_blacklist:
         if lower_name.endswith(suffix):
-            return trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
+            name = _trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
+
+    logger.debug('make_valid_name: suffix filtered name %r', name)
+
+    return name
 
 
 def make_valid_file_name(name):
@@ -263,6 +300,7 @@ def make_valid_file_name(name):
     :param name: string
     :return: string
     """
+    logging.getLogger(__name__).debug('make_valid_file_name: (%r)', name)
     return make_valid_name(name, FILENAME_NAME_BLACKLIST, FILENAME_CHARACTER_WHITELIST,
                                  FILENAME_PREFIX_BLACKLIST, FILENAME_SUFFIX_BLACKLIST,
                                  FILENAME_SEQUENCE_BLACKLIST, '_')
@@ -275,6 +313,7 @@ def make_valid_branch_name(name):
     :param name: string
     :return: string
     """
+    logging.getLogger(__name__).debug('make_valid_branch_name: (%r)', name)
     return make_valid_name(name, GIT_NAME_BLACKLIST, GIT_CHARACTER_WHITELIST,
                                  GIT_PREFIX_BLACKLIST, GIT_SUFFIX_BLACKLIST,
                                  GIT_SEQUENCE_BLACKLIST, '_')

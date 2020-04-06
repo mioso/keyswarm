@@ -8,7 +8,6 @@ import logging
 from subprocess import call, PIPE, Popen
 
 from .decoder import try_decode
-from .name_filter import make_valid_branch_name
 
 class GitError(Exception):
     """
@@ -299,9 +298,10 @@ def git_branch(repository_path, branch_name):
     logger.debug('git_branch: (%r, %r)', repository_path, branch_name)
 
     if not path_belongs_to_repository(repository_path):
+        logger.debug('git_branch: path is not a repository')
         return
 
-    git_process = Popen([get_binary(), 'branch', make_valid_branch_name(branch_name), '--'],
+    git_process = Popen([get_binary(), 'branch', branch_name, '--'],
                         cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate()
     logger.debug('git_branch: returncode: %r', git_process.returncode)
@@ -452,22 +452,32 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
     logger.debug('git_commit_cycle: has_remote: %r', has_remote)
 
     if has_remote:
+        logger.debug('git_commit_cycle: pull')
         git_pull(repository_path, http_url=http_url, http_username=http_username,
                  http_password=http_password, timeout=network_timeout)
+        logger.debug('git_commit_cycle: branch')
         git_branch(repository_path, branch_name)
+        logger.debug('git_commit_cycle: switch branch')
         git_checkout_branch(repository_path, branch_name=branch_name)
 
+    logger.debug('git_commit_cycle: add')
     git_add(repository_path, file_paths)
+    logger.debug('git_commit_cycle: commit')
     git_commit(repository_path, commit_message)
 
     if has_remote:
+        logger.debug('git_commit_cycle: push')
         git_push_set_origin(repository_path, branch_name, http_url=http_url,
                             http_username=http_username, http_password=http_password,
                             timeout=network_timeout)
+        logger.debug('git_commit_cycle: checkout master')
         git_checkout_branch(repository_path, 'master')
+        logger.debug('git_commit_cycle: pull')
         git_pull(repository_path, http_url=http_url, http_username=http_username,
                  http_password=http_password, timeout=network_timeout)
+        logger.debug('git_commit_cycle: merge')
         git_pull(repository_path, branch_name, http_url=http_url, http_username=http_username,
                  http_password=http_password, timeout=network_timeout)
+        logger.debug('git_commit_cycle: push')
         git_push(repository_path, http_url=http_url, http_username=http_username,
                  http_password=http_password, timeout=network_timeout)
