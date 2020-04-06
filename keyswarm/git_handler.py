@@ -246,8 +246,9 @@ def git_clone(repository_path, url, http_username=None, http_password=None, time
     if http_username and http_password:
         cache_credentials(url, http_username, http_password)
 
-    git_process = Popen([get_binary(), 'clone', '--recurse-submodules', url, '--',
-                         repository_path], stdout=PIPE, stderr=PIPE)
+    git_cmd = [get_binary(), 'clone', '--recurse-submodules', url, '--', repository_path]
+    logger.debug('git_clone: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate(timeout=timeout)
     logger.debug('git_clone: returncode: %r', git_process.returncode)
     logger.debug('git_clone: stdout: %r', stdout)
@@ -274,11 +275,11 @@ def git_pull(repository_path, branch_name=None, http_url=None, http_username=Non
         cache_credentials(http_url, http_username, http_password)
 
     if branch_name:
-        git_process = Popen([get_binary(), 'pull', 'origin', branch_name, '--'],
-                            cwd=repository_path, stdout=PIPE, stderr=PIPE)
+        git_cmd = [get_binary(), 'pull', 'origin', branch_name, '--']
     else:
-        git_process = Popen([get_binary(), 'pull', '--recurse-submodules'], cwd=repository_path,
-                            stdout=PIPE, stderr=PIPE)
+        git_cmd = [get_binary(), 'pull', '--recurse-submodules']
+    logger.debug('git_pull: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate(timeout=timeout)
     logger.debug('git_pull: returncode: %r', git_process.returncode)
     logger.debug('git_pull: stdout: %r', stdout)
@@ -301,8 +302,9 @@ def git_branch(repository_path, branch_name):
         logger.debug('git_branch: path is not a repository')
         return
 
-    git_process = Popen([get_binary(), 'branch', branch_name, '--'],
-                        cwd=repository_path, stdout=PIPE, stderr=PIPE)
+    git_cmd = [get_binary(), 'branch', branch_name, '--']
+    logger.debug('git_branch: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate()
     logger.debug('git_branch: returncode: %r', git_process.returncode)
     logger.debug('git_branch: stdout: %r', stdout)
@@ -324,8 +326,9 @@ def git_checkout_branch(repository_path, branch_name):
     if not path_belongs_to_repository(repository_path):
         return
 
-    git_process = Popen([get_binary(), 'checkout', branch_name, '--'], cwd=repository_path,
-                        stdout=PIPE, stderr=PIPE)
+    git_cmd = [get_binary(), 'checkout', branch_name, '--']
+    logger.debug('git_checkout_branch: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate()
     logger.debug('git_branch: returncode: %r', git_process.returncode)
     logger.debug('git_branch: stdout: %r', stdout)
@@ -347,8 +350,9 @@ def git_add(repository_path, file_paths):
     if not path_belongs_to_repository(repository_path):
         return
 
-    git_process = Popen([get_binary(), 'add', '--', *file_paths], cwd=repository_path,
-                        stdout=PIPE, stderr=PIPE)
+    git_cmd = [get_binary(), 'add', '--', *map(str, file_paths)]
+    logger.debug('git_add: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate()
     logger.debug('git_add: returncode: %r', git_process.returncode)
     logger.debug('git_add: stdout: %r', stdout)
@@ -371,8 +375,9 @@ def git_commit(repository_path, commit_message):
     if not path_belongs_to_repository(repository_path):
         return
 
-    git_process = Popen([get_binary(), 'commit', '-m', commit_message], cwd=repository_path,
-                        stdout=PIPE, stderr=PIPE)
+    git_cmd = [get_binary(), 'commit', '-m', commit_message]
+    logger.debug('git_commit: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate()
     logger.debug('git_commit: returncode: %r', git_process.returncode)
     logger.debug('git_commit: stdout: %r', stdout)
@@ -421,8 +426,9 @@ def git_push_set_origin(repository_path, branch_name, http_url=None, http_userna
     if http_url and http_username and http_password:
         cache_credentials(http_url, http_username, http_password)
 
-    git_process = Popen([get_binary(), 'push', '--set-upstream', 'origin', branch_name],
-                        cwd=repository_path, stdout=PIPE, stderr=PIPE)
+    git_cmd = [get_binary(), 'push', '--set-upstream', 'origin', branch_name]
+    logger.debug('git_push_set_origin: git_cmd: %r', git_cmd)
+    git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate(timeout=timeout)
     logger.debug('git_push_set_origin: returncode: %r', git_process.returncode)
     logger.debug('git_push_set_origin: stdout: %r', stdout)
