@@ -280,7 +280,7 @@ def make_valid_name(name, name_blacklist, character_whitelist, prefix_blacklist,
 
     for prefix in prefix_blacklist:
         if lower_name.startswith(prefix):
-            name = _trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length) + fill_character
+            name = fill_character + _trim_to_byte_length(name, NAME_BYTE_LIMIT - fill_character_byte_length)
 
     logger.debug('make_valid_name: prefix filtered name: %r', name)
 
