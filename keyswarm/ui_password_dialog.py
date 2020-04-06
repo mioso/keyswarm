@@ -273,7 +273,7 @@ class PasswordDialog(QDialog):
         clear_widget_style_sheet(self.password_input)
         clear_widget_style_sheet(self.pass_confirm_input)
         if not is_valid_file_name(self.password_name_input.text()):
-            logger.debug('PasswordDialog.confirm: empty name')
+            logger.debug('PasswordDialog.confirm: invalid name')
             apply_error_style_to_widget(self.password_name_input)
         elif self.password_input.text() == '':
             apply_error_style_to_widget(self.password_input)

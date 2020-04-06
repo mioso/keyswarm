@@ -13,6 +13,7 @@ from .gpg_handler import decrypt, encrypt, get_recipients_from_gpg_id, write_gpg
 from .git_handler import (git_init, git_add, git_commit, git_clone, git_pull, git_commit_cycle,
                           repository_config_has_user_data, repository_config_set_user_data,
                           path_belongs_to_repository, repository_has_remote)
+from .name_filter import make_valid_branch_name
 from .pass_file_format_parser import PassFile
 
 
@@ -112,6 +113,7 @@ class PassFileSystem():
 
         # Raises ValueError if path_to_folder is not a subpath of self.password_store_root
         relative_path = str(Path(path_to_folder).relative_to(Path(self.password_store_root)))
+        logger.debug('create_password_file: relative_path: %r', relative_path)
 
         gpg_id_file = self.search_gpg_id_file(path_to_folder)
         logger.debug('create_password_file: gpg_id_file: %r', gpg_id_file)
@@ -128,10 +130,18 @@ class PassFileSystem():
 
             if not skip_git:
                 timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
+                if relative_path == '.':
+                    branch_name = (f'create_password/{timestamp}/'
+                                   f'{make_valid_branch_name(name)}')
+                    commit_message = f'Create password for {name} using keyswarm.'
+                else:
+                    branch_name = (f'create_password/{timestamp}/'
+                                   f'{make_valid_branch_name(relative_path)}/'
+                                   f'{make_valid_branch_name(name)}')
+                    commit_message = f'Create password for {relative_path}/{name} using keyswarm.'
                 git_commit_cycle(
                     repository_path=self.password_store_root, file_paths=[path_to_file],
-                    branch_name=(f'create_password/{timestamp}/{relative_path}/{name}'),
-                    commit_message=(f'Create password for {relative_path}/{name} using keyswarm.'),
+                    branch_name=branch_name, commit_message=commit_message,
                     http_url=self.git_credentials['url'],
                     http_username=self.git_credentials['username'],
                     http_password=self.git_credentials['password'],
@@ -161,7 +171,9 @@ class PassFileSystem():
                 timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
                 git_commit_cycle(
                     repository_path=self.password_store_root, file_paths=[file_path],
-                    branch_name=(f'delete_password/{timestamp}/{relative_path}/{name}'),
+                    branch_name=(f'delete_password/{timestamp}/'
+                                 f'{make_valid_branch_name(relative_path)}/'
+                                 f'{make_valid_branch_name(name)}'),
                     commit_message=(f'Delete password for {relative_path}/{name} using keyswarm.'),
                     http_url=self.git_credentials['url'],
                     http_username=self.git_credentials['username'],
@@ -211,7 +223,9 @@ class PassFileSystem():
                     repository_path=self.password_store_root,
                     file_paths=[Path(path_to_old_folder, old_name),
                                 Path(path_to_new_folder, new_name)],
-                    branch_name=(f'move_password/{timestamp}/{relative_old_path}/{old_name}'),
+                    branch_name=(f'move_password/{timestamp}/'
+                                 f'{make_valid_branch_name(relative_old_path)}/'
+                                 f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Move password from `{relative_old_path}/{old_name}` to `'
                                     f'{relative_new_path}/{new_name}` using keyswarm.'),
                     http_url=self.git_credentials['url'],
@@ -256,7 +270,9 @@ class PassFileSystem():
                 git_commit_cycle(
                     repository_path=self.password_store_root,
                     file_paths=[file_path],
-                    branch_name=(f'change_password/{timestamp}/{relative_old_path}/{old_name}'),
+                    branch_name=(f'change_password/{timestamp}/'
+                                 f'{make_valid_branch_name(relative_old_path)}/'
+                                 f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Change password for {relative_old_path}/{old_name} '
                                     f'using keyswarm.'),
                     http_url=self.git_credentials['url'],
@@ -279,8 +295,9 @@ class PassFileSystem():
                     repository_path=self.password_store_root,
                     file_paths=[Path(path_to_old_folder, old_name),
                                 Path(path_to_new_folder, new_name)],
-                    branch_name=(f'change_move_password/{timestamp}/{relative_old_path}/'
-                                 f'{old_name}'),
+                    branch_name=(f'change_move_password/{timestamp}/'
+                                 f'{make_valid_branch_name(relative_old_path)}/'
+                                 f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Change/Move password from `{relative_old_path}/{old_name}` t'
                                     f'o `{relative_new_path}/{new_name}` using keyswarm.'),
                     http_url=self.git_credentials['url'],
@@ -368,7 +385,9 @@ class PassFileSystem():
                 repository_path=self.password_store_root,
                 file_paths=[Path(path_to_old_parent_folder, old_name),
                             Path(path_to_new_parent_folder, new_name)],
-                branch_name=(f'move_folder/{timestamp}/{relative_old_path}/{old_name}'),
+                branch_name=(f'move_folder/{timestamp}/'
+                             f'{make_valid_branch_name(relative_old_path)}/'
+                             f'{make_valid_branch_name(old_name)}'),
                 commit_message=(f'Move folder from `{relative_old_path}/{old_name}` to `'
                                 f'{relative_new_path}/{new_name}` using keyswarm.'),
                 http_url=self.git_credentials['url'],
@@ -445,12 +464,21 @@ class PassFileSystem():
             git_commit_cycle(
                 repository_path=self.password_store_root,
                 file_paths=[file_path],
-                branch_name=(f'reencrypt/{timestamp}/{relative_path}'),
+                branch_name=(f'reencrypt/{timestamp}/{make_valid_branch_name(relative_path)}'),
                 commit_message=(f'Reencrypt passwords in {relative_path} using keyswarm.'),
                 http_url=self.git_credentials['url'],
                 http_username=self.git_credentials['username'],
                 http_password=self.git_credentials['password'],
                 network_timeout=self.config.get('network', 'timeout', fallback=60))
+
+
+    def refresh_password_store(self):
+        git_pull(
+            repository_path=self.password_store_root,
+            http_url=self.git_credentials['url'],
+            http_username=self.git_credentials['username'],
+            http_password=self.git_credentials['password'],
+            timeout=self.config.get('network', 'timeout', fallback=60))
 
 
     @staticmethod

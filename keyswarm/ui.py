@@ -339,6 +339,8 @@ class MainWindow(QMainWindow):
         Adds a sub folder to the current folder.
         :return: None
         """
+        logger = logging.getLogger(__name__)
+
         folder_dialog = QDialog()
         folder_dialog.setFixedHeight(120)
         folder_dialog.setFixedWidth(300)
@@ -363,7 +365,9 @@ class MainWindow(QMainWindow):
         confirm_button.clicked.connect(folder_name_check)
 
         if folder_dialog.exec_():
+            logger.debug('add_folder: tree: %r', self.tree)
             current_item = self.tree.currentItem()
+            logger.debug('add_folder: current_item: %r', current_item)
             folder_path = current_item.file_system_path if current_item.isfile else str(
                 Path(current_item.file_system_path, current_item.name))
             folder_name = folder_name_input.text()
@@ -376,20 +380,24 @@ class MainWindow(QMainWindow):
         Displays an add password dialog.
         :return: None
         """
+        logger = logging.getLogger(__name__)
+
         optional_fields = []
         if 'attributes' in self.config:
             optional_fields = list(map(lambda a: (a[0], '', a[1]),
                                        dict(self.config['attributes']).items()))
             optional_fields.sort()
+        logger.debug('add_password: optional_fields: %r', optional_fields)
+
         pass_dialog = PasswordDialog(optional_fields=optional_fields)
         if pass_dialog.exec_():
-            current_item_parent = self.tree.currentItem().file_system_path
-            current_item_name = self.tree.currentItem().name
-            current_item_is_dir = self.tree.currentItem().isdir
-            if current_item_is_dir:
-                password_dir = path.join(current_item_parent, current_item_name)
+            logger.debug('add_password: tree: %r', self.tree)
+            current_item = self.tree.currentItem()
+            logger.debug('add_password: current_item: %r', current_item)
+            if current_item.isdir:
+                password_dir = path.join(current_item.file_system_path, current_item.name)
             else:
-                password_dir = current_item_parent
+                password_dir = current_item.file_system_path
             password_file = pass_dialog.to_pass_file()
             try:
                 self.tree.file_system.create_password_file(
@@ -397,8 +405,10 @@ class MainWindow(QMainWindow):
                     name=pass_dialog.password_name_input.text(),
                     password_file=password_file)
             except GitError as error:
+                logger.debug('add_password: %r', error)
                 self.show_error(error.__repr__())
-            except ValueError:
+            except ValueError as error:
+                logger.debug('add_password: %r', error)
                 self.show_missing_key_error()
             finally:
                 self.tree.refresh_tree()
@@ -413,7 +423,7 @@ class MainWindow(QMainWindow):
         """
         logger = logging.getLogger(__name__)
         logger.debug('refresh_password_store')
-        self.tree = PassUiFileSystemTree(self.password_store_root, self.config)
+        self.tree.refresh_tree()
         self.create_new_search_index()
 
     def reencrypt_files(self):
