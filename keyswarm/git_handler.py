@@ -453,6 +453,7 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
                  len(http_password) if http_password else None, network_timeout)
 
     if not path_belongs_to_repository(repository_path):
+        logger.debug('git_commit_cycle: not a repository, done here')
         return
     has_remote = repository_has_remote(repository_path)
     logger.debug('git_commit_cycle: has_remote: %r', has_remote)
@@ -487,3 +488,4 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
         logger.debug('git_commit_cycle: push')
         git_push(repository_path, http_url=http_url, http_username=http_username,
                  http_password=http_password, timeout=network_timeout)
+    logger.debug('git_commit_cycle: done')
