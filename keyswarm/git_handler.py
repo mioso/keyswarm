@@ -156,7 +156,7 @@ def path_belongs_to_repository(directory_path):
     try:
         get_repository_root(directory_path)
         return True
-    except NotARepositoryError:
+    except (NotARepositoryError, NotADirectoryError):
         return False
 
 
