@@ -469,10 +469,11 @@ class PassFileSystem():
             timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
             git_commit_cycle(
                 repository_path=self.password_store_root,
-                file_paths=[relative_path],
+                file_paths=['.gpg-id', relative_path],
                 branch_name=(f'reencrypt/{timestamp}/'
                              f'{make_valid_branch_name(str(relative_path))}'),
-                commit_message=(f'Reencrypt passwords in {relative_path} using keyswarm.'),
+                commit_message=(f'Reencrypt passwords in {relative_path} for changed recipients us'
+                                f'ing keyswarm.'),
                 http_url=self.git_credentials['url'],
                 http_username=self.git_credentials['username'],
                 http_password=self.git_credentials['password'],
