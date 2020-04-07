@@ -447,8 +447,8 @@ class MainWindow(QMainWindow):
         logger.debug('reencrypt_files: gpg_id_path: %r', gpg_id_path)
 
         try:
-            self.tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
             write_gpg_id_file(gpg_id_path, list_of_keys)
+            self.tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
         except GitError as error:
             self.show_error(error.__repr__())
         except ValueError:

@@ -97,6 +97,7 @@ class PassUiFileSystemTree(QTreeWidget):
             self.sortItems(0, Qt.SortOrder(0))
             window = self.window()
             if isinstance(window, QMainWindow):
+                self.setCurrentItem(self.topLevelItem(0))
                 window.clear_search()
 
     def select_item(self, path_to_folder, name):
