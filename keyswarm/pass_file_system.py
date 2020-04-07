@@ -122,7 +122,8 @@ class PassFileSystem():
             logger.debug('create_password_file: len(clear_text): %r', len(clear_text))
             list_of_recipients = get_recipients_from_gpg_id(gpg_id_file)
             logger.debug('create_password_file: list_of_recipients: %r', list_of_recipients)
-            path_to_file = str(Path(path_to_folder, f'{name}.gpg'))
+            file_name = f'{name}.gpg'
+            path_to_file = str(Path(path_to_folder, file_name))
             logger.debug('create_password_file: path_to_file: %r', path_to_file)
             result = encrypt(clear_text=clear_text,
                              list_of_recipients=list_of_recipients,
@@ -130,9 +131,10 @@ class PassFileSystem():
 
             if not skip_git:
                 timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
-                folder_part, branch_folder_part, _ = self._format_relative_paths(relative_path, '.')
+                branch_folder_part, folder_part, _ = self._format_relative_paths(relative_path, '.')
                 git_commit_cycle(
-                    repository_path=self.password_store_root, file_paths=[path_to_file],
+                    repository_path=self.password_store_root,
+                    file_paths=[Path(relative_path, file_name)],
                     branch_name=(f'create_password/{timestamp}/{branch_folder_part}'
                                  f'{make_valid_branch_name(name)}'),
                     commit_message=f'Create password for `{folder_part}{name}` using keyswarm.',
@@ -157,15 +159,17 @@ class PassFileSystem():
         # Raises ValueError if path_to_folder is not a subpath of self.password_store_root
         relative_path = str(Path(path_to_folder).relative_to(Path(self.password_store_root)))
 
-        file_path = Path(path_to_folder, f'{name}.gpg')
+        file_name = f'{name}.gpg'
+        absolute_file_path = Path(path_to_folder, file_name)
+        relative_file_path = Path(relative_path, file_name)
         try:
-            remove(file_path)
+            remove(absolute_file_path)
 
             if not skip_git:
                 timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
                 folder_part, branch_folder_part, _ = self._format_relative_paths(relative_path, '.')
                 git_commit_cycle(
-                    repository_path=self.password_store_root, file_paths=[file_path],
+                    repository_path=self.password_store_root, file_paths=[relative_file_path],
                     branch_name=(f'delete_password/{timestamp}/{branch_folder_part}'
                                  f'{make_valid_branch_name(name)}'),
                     commit_message=(f'Delete password for `{folder_part}{name}` using keyswarm.'),
@@ -175,12 +179,14 @@ class PassFileSystem():
                     network_timeout=self.config.get('network', 'timeout', fallback=60))
 
         except IsADirectoryError:
-            logger.warning('delete_password_file: tried to remove directory: %r', file_path)
+            logger.warning('delete_password_file: tried to remove directory: %r',
+                           absolute_file_path)
         except FileNotFoundError:
-            logger.warning('delete_password_file: tried to remove non-existent file: %r', file_path)
+            logger.warning('delete_password_file: tried to remove non-existent file: %r',
+                           absolute_file_path)
         except PermissionError:
             logger.warning('delete_password_file: insufficient permission to remove file: %r',
-                           file_path)
+                           absolute_file_path)
 
     def move_password_file(self, path_to_old_folder, old_name, path_to_new_folder, new_name,
                            skip_git=False):
@@ -258,7 +264,7 @@ class PassFileSystem():
                 password_file=password_file,
                 skip_git=True)
 
-            file_path = (Path(path_to_old_folder, f'{old_name}.gpg'))
+            file_path = (Path(relative_old_path, f'{old_name}.gpg'))
 
             if not skip_git:
                 timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
@@ -291,8 +297,8 @@ class PassFileSystem():
                     relative_old_path, relative_new_path)
                 git_commit_cycle(
                     repository_path=self.password_store_root,
-                    file_paths=[Path(path_to_old_folder, old_name),
-                                Path(path_to_new_folder, new_name)],
+                    file_paths=[Path(relative_old_path, f'{old_name}.gpg'),
+                                Path(relative_new_path, f'{new_name}.gpg')],
                     branch_name=(f'change_move_password/{timestamp}/{branch_folder_part}'
                                  f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Change/Move password from `{old_folder_part}{old_name}` t'
@@ -384,8 +390,8 @@ class PassFileSystem():
 
             git_commit_cycle(
                 repository_path=self.password_store_root,
-                file_paths=[Path(path_to_old_parent_folder, old_name),
-                            Path(path_to_new_parent_folder, new_name)],
+                file_paths=[Path(relative_old_path, f'{old_name}.gpg'),
+                            Path(relative_new_path, f'{new_name}.gpg')],
                 branch_name=(f'move_folder/{timestamp}/{branch_folder_part}'
                              f'{make_valid_branch_name(old_name)}'),
                 commit_message=(f'Move folder from `{old_folder_part}{old_name}` to `'
@@ -463,7 +469,7 @@ class PassFileSystem():
             timestamp = dt.utcnow().isoformat().replace(':', '-').split('.')[0]
             git_commit_cycle(
                 repository_path=self.password_store_root,
-                file_paths=[file_path],
+                file_paths=[relative_path],
                 branch_name=(f'reencrypt/{timestamp}/'
                              f'{make_valid_branch_name(str(relative_path))}'),
                 commit_message=(f'Reencrypt passwords in {relative_path} using keyswarm.'),
