@@ -9,7 +9,8 @@ from re import compile as re_compile
 from shutil import move
 from datetime import datetime as dt
 
-from .gpg_handler import decrypt, encrypt, get_recipients_from_gpg_id, write_gpg_id_file
+from .gpg_handler import (decrypt, encrypt, get_recipients_from_gpg_id, write_gpg_id_file,
+                          import_gpg_keys)
 from .git_handler import (git_init, git_add, git_commit, git_clone, git_pull, git_commit_cycle,
                           repository_config_has_user_data, repository_config_set_user_data,
                           path_belongs_to_repository, repository_has_remote)
@@ -487,6 +488,7 @@ class PassFileSystem():
             http_username=self.git_credentials['username'],
             http_password=self.git_credentials['password'],
             timeout=self.config.get('network', 'timeout', fallback=60))
+        import_gpg_keys(self.password_store_root)
 
 
     @staticmethod
