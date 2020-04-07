@@ -390,8 +390,8 @@ class PassFileSystem():
 
             git_commit_cycle(
                 repository_path=self.password_store_root,
-                file_paths=[Path(relative_old_path, f'{old_name}.gpg'),
-                            Path(relative_new_path, f'{new_name}.gpg')],
+                file_paths=[Path(relative_old_path, old_name),
+                            Path(relative_new_path, new_name)],
                 branch_name=(f'move_folder/{timestamp}/{branch_folder_part}'
                              f'{make_valid_branch_name(old_name)}'),
                 commit_message=(f'Move folder from `{old_folder_part}{old_name}` to `'
