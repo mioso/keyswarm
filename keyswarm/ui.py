@@ -455,13 +455,6 @@ class MainWindow(QMainWindow):
             logger.debug('reencrypt_files: %r', error)
             self.show_error(str(error))
 
-    def show_missing_key_error(self):
-        """
-        show the error message for encrypting to an unavailable key
-        """
-        self.show_error(("At least one public key is not available. "
-                         "Import public key or manually remove it."))
-
     def show_error(self, error_message):
         """
         display an error message to the user inside the main window
