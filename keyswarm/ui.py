@@ -451,8 +451,9 @@ class MainWindow(QMainWindow):
             self.tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
         except GitError as error:
             self.show_error(error.__repr__())
-        except ValueError:
-            self.show_missing_key_error()
+        except ValueError as error:
+            logger.debug('reencrypt_files: %r', error)
+            self.show_error(str(error))
 
     def show_missing_key_error(self):
         """
