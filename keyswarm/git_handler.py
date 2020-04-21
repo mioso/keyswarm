@@ -437,6 +437,60 @@ def git_push_set_origin(repository_path, branch_name, http_url=None, http_userna
         raise GitPushError(try_decode(stderr))
 
 
+def git_soft_clean(repository_path):
+    """
+    uses git clean to remove changes and returns to master branch
+    leaving prior branch as is for manual inspection
+
+    :param repository_path: PathLike path of the repository
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('git_soft_clean: (%r)', repository_path)
+
+    git_cmd_list = [
+        [get_binary(), 'clean', '-fdx'],
+        [get_binary(), 'reset', '--hard', 'HEAD'],
+        [get_binary(), 'checkout', 'master']]
+
+    _git_cmd_chain(repository_path, git_cmd_list)
+
+
+def git_clean(repository_path, delete_branch):
+    """
+    uses git clean to remove changes, returns to master branch and deletes the specified branch
+
+    :param repository_path: PathLike path of the repository
+    :param delete_branch: string name of the branch to delete
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('git_clean: (%r, %r)', repository_path, delete_branch)
+
+    git_cmd_list = [
+        [get_binary(), 'clean', '-fdx'],
+        [get_binary(), 'reset', '--hard', 'HEAD'],
+        [get_binary(), 'checkout', 'master'],
+        [get_binary(), 'branch', '--delete', delete_branch]]
+
+    _git_cmd_chain(repository_path, git_cmd_list)
+
+def _git_cmd_chain(repository_path, git_cmd_list):
+    logger = logging.getLogger(__name__)
+    logger.debug('_git_cmd_chain: (%r, %r)', repository_path, git_cmd_list)
+
+    if not path_belongs_to_repository(repository_path):
+        return
+
+    for git_cmd in git_cmd_list:
+        logger.debug('_git_cmd_chain: git_cmd: %r', git_cmd)
+        git_process = Popen(git_cmd, cwd=repository_path, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = git_process.communicate()
+        logger.debug('_git_cmd_chain: returncode: %r', git_process.returncode)
+        logger.debug('_git_cmd_chain: stdout: %r', stdout)
+        logger.debug('_git_cmd_chain: stderr: %r', stderr)
+        if git_process.returncode != 0:
+            raise GitError(f'Failed to return to clean state:\n\n{try_decode(stderr)}')
+
+
 def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, http_url=None,
                      http_username=None, http_password=None, network_timeout=60):
     """

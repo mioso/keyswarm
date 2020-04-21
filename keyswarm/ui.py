@@ -18,7 +18,7 @@ from PySide2.QtGui import QIcon
 
 from .config import get_config, save_config, get_user_config
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
-from .git_handler import GitError
+from .git_handler import GitError, git_soft_clean
 from .name_filter import is_valid_file_name
 from .pass_file_system import PassFileSystem
 from .ui_filesystem_tree import PassUiFileSystemTree
@@ -449,11 +449,13 @@ class MainWindow(QMainWindow):
         try:
             write_gpg_id_file(gpg_id_path, list_of_keys)
             self.tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
-        except GitError as error:
-            self.show_error(error.__repr__())
-        except ValueError as error:
+        except (ValueError, GitError) as error:
             logger.debug('reencrypt_files: %r', error)
             self.show_error(str(error))
+            try:
+                git_soft_clean(folder_path)
+            except GitError as error:
+                self.show_error(str(error))
 
     def show_error(self, error_message):
         """
