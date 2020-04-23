@@ -49,10 +49,10 @@ class MainWindow(QMainWindow):
         self.config = get_config(password_store_root)
         try:
             self.get_user_key()
-            logger.debug('trying to open password store')
+            logger.info('trying to open password store')
             self.tree = PassUiFileSystemTree(password_store_root, self.config)
         except FileNotFoundError:
-            logger.debug('creating new password store')
+            logger.info('creating new password store')
             self.create_password_store(password_store_root)
         except GitError as error:
             self.show_error(error.__repr__())
@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
         :param password_store_root: PathLike path of the root directory to create
         """
         logger = logging.getLogger(__name__)
-        logger.debug('create_password_store: password_store_root: %r', password_store_root)
+        logger.info('create_password_store: password_store_root: %r', password_store_root)
 
         git_or_plain = git_or_plain = a_b_dialog_or_exit(
             'git', 'plain', 'Git or Plain', '&Git', '&Plain',
@@ -227,11 +227,11 @@ class MainWindow(QMainWindow):
                     use_git=git_or_plain == 'git')
                 self.tree = PassUiFileSystemTree(password_store_root, self.config, file_system)
         except PermissionError as error:
-            logger.debug(error)
+            logger.critical(error)
             self.critical_error_message('Unable to create password store at %r, permission denied'
                                         % (password_store_root,))
         except FileExistsError as error:
-            logger.debug(error)
+            logger.critical(error)
             self.critical_error_message('Unable to create password store at %r, there already is a'
                                         ' file or directory with that path' %
                                         (password_store_root,))
@@ -280,7 +280,7 @@ class MainWindow(QMainWindow):
         """
         logger = logging.getLogger(__name__)
         if not self.search:
-            logger.debug('search: no searcher')
+            logger.info('search: no searcher')
             return
 
         glob_prefix = (self.tool_bar.search_options.radio_button_glob.isChecked() or
@@ -313,7 +313,7 @@ class MainWindow(QMainWindow):
         clears the search bar and hides the result widget
         """
         logger = logging.getLogger(__name__)
-        logger.debug('clear_search')
+        logger.info('clear_search')
         self.tool_bar.search_bar.setText('')
         self.tool_bar.search_results.clear()
         self.tool_bar.search_results.hide()
@@ -331,7 +331,7 @@ class MainWindow(QMainWindow):
         """
         create a new search index from the password tree
         """
-        logging.getLogger(__name__).debug('create_new_search_index')
+        logging.getLogger(__name__).info('create_new_search_index')
         self.searcher = PasswordSearch(file_system_tree=self.tree)
 
     def add_folder(self):
@@ -422,7 +422,7 @@ class MainWindow(QMainWindow):
         Refreshes the password store and reloads it.
         """
         logger = logging.getLogger(__name__)
-        logger.debug('refresh_password_store')
+        logger.info('refresh_password_store')
         self.tree.refresh_tree()
         self.create_new_search_index()
 
@@ -435,16 +435,16 @@ class MainWindow(QMainWindow):
         list_of_keys = self.user_list.get_checked_item_names()
         logger.debug('reencrypt_files: list_of_keys: %r', list_of_keys)
         if not list_of_keys:
-            logger.debug('no recipients selected')
+            logger.info('reencrypt_files: no recipients selected')
             self.show_error('no recipients selected')
             return
 
         folder_path = path.join(self.tree.currentItem().file_system_path,
                                 self.tree.currentItem().name)
-        logger.debug('reencrypt_files: folder_path: %r', folder_path)
+        logger.info('reencrypt_files: folder_path: %r', folder_path)
 
         gpg_id_path = path.join(folder_path, '.gpg-id')
-        logger.debug('reencrypt_files: gpg_id_path: %r', gpg_id_path)
+        logger.info('reencrypt_files: gpg_id_path: %r', gpg_id_path)
 
         try:
             write_gpg_id_file(gpg_id_path, list_of_keys)
@@ -547,7 +547,7 @@ def main():
 
         logging.basicConfig(level=log_level, filename=file_name, filemode=file_mode)
     except KeyError:
-        pass
+        logging.basicConfig(level=logging.INFO)
 
     try:
         password_store_root = user_config['general']['password_store_root']

@@ -50,6 +50,7 @@ class PassFileSystem():
         if (not no_git_override and
                 path_belongs_to_repository(password_store_root) and
                 repository_has_remote(password_store_root)):
+            logger.info('PassFileSystem.__init__:git_pull')
             git_pull(repository_path=password_store_root,
                      http_url=self.git_credentials['url'],
                      http_username=self.git_credentials['username'],
@@ -482,12 +483,15 @@ class PassFileSystem():
 
 
     def refresh_password_store(self):
+        logger = logging.getLogger(__name__)
+        logger.info('refresh_password_store:git_pull')
         git_pull(
             repository_path=self.password_store_root,
             http_url=self.git_credentials['url'],
             http_username=self.git_credentials['username'],
             http_password=self.git_credentials['password'],
             timeout=self.config.get('network', 'timeout', fallback=60))
+        logger.info('refresh_password_store:import_gpg_keys')
         import_gpg_keys(self.password_store_root)
 
 
@@ -499,6 +503,7 @@ class PassFileSystem():
         :param own_key_id: string id of the users gpg secret key
         """
         logger = logging.getLogger(__name__)
+        logger.info('initialize_password_store')
         logger.debug('initialize_password_store: (%r, %r, %r)',
                      password_store_root, config, git_init)
 
@@ -520,6 +525,7 @@ class PassFileSystem():
         :param repo_info: dict(dict(string)) connection information for the remote repository
         """
         logger = logging.getLogger(__name__)
+        logger.info('clone_password_store')
         logger.debug('clone_password_store: (%r, %r)', password_store_root, repo_info)
 
         own_key_id = config['gpg']['user_key_id']

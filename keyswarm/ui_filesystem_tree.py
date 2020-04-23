@@ -78,6 +78,7 @@ class PassUiFileSystemTree(QTreeWidget):
         logger.debug('refresh_tree: %r', node)
         root_node = False
         if not node:
+            logger.info('refresh_tree')
             root_node = True
             self.file_system.refresh_password_store()
             node = PassUIFileSystemItem(self.root, '')
