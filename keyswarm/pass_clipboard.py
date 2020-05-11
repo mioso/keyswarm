@@ -2,7 +2,7 @@
 this module provides clipboard interaction with auto clear
 """
 
-from multiprocessing import Process
+from threading import Thread
 from time import sleep
 
 import clipboard
@@ -15,7 +15,7 @@ def copy(text, clear_after=40):
     :param clear_after: int - seconds to clear clipboard after
     :return: None
     """
-    Process(target=_copy_to_clipboard_, args=(text, clear_after)).start()
+    Thread(target=_copy_to_clipboard_, args=(text, clear_after)).start()
 
 
 def _copy_to_clipboard_(text, seconds):
