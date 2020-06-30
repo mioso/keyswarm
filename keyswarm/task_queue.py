@@ -140,7 +140,7 @@ class TaskQueue():
         for finished_task in filter(lambda a: a[1].done(), self.__running_tasks):
             logger.debug('%r finished', finished_task[0])
             self.__running_tasks.remove(finished_task)
-            heappush(self.__finished_tasks, finished_task)
+            heappush(self.__finished_tasks, finished_task[0])
 
         if len(self.__running_tasks) < self.__max_workers:
             try:
