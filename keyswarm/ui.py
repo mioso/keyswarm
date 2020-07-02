@@ -3,24 +3,28 @@ This module provides the main application window and the main function.
 """
 
 from configparser import DuplicateSectionError
+from distutils.util import strtobool
 from functools import partial
 import logging
 from os import path
 from pathlib import Path
-from sys import exit as sys_exit
+from sys import argv, exit as sys_exit
 
 # pylint: disable=no-name-in-module
+from PySide2.QtCore import QTimer
 from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QAction,
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
                                QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
                                QButtonGroup, QRadioButton, QFormLayout)
 from PySide2.QtGui import QIcon
+# pylint: enable=no-name-in-module
 
 from .config import get_config, save_config, get_user_config
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
 from .git_handler import GitError, git_soft_clean
 from .name_filter import is_valid_file_name
 from .pass_file_system import PassFileSystem
+from .task_queue import TaskQueue, Task, TaskPriority
 from .ui_filesystem_tree import PassUiFileSystemTree
 from .ui_helper import (apply_error_style_to_widget, selection_dialog,
                         a_b_dialog_or_exit, confirm_error, clone_password_store_dialog)
@@ -40,6 +44,13 @@ class MainWindow(QMainWindow):
         QMainWindow.__init__(self)
 
         logger = logging.getLogger()
+
+        self.__task_queue = TaskQueue()
+        self.unhandled_tasks = []
+        self.__task_timer = QTimer(self)
+        self.__task_timer.setInterval(50) # 0 avoids downtime but creates too much cpu load
+        self.__task_timer.timeout.connect(self._task_queue_handler)
+        self.__task_timer.start()
 
         self.main_frame = QFrame()
         self.main_frame.setLayout(QVBoxLayout())
@@ -81,6 +92,13 @@ class MainWindow(QMainWindow):
         refresh_action.triggered.connect(self.refresh_password_store)
         self.menuBar().addAction(refresh_action)
 
+        try:
+            if strtobool(self.config.get('debug', 'enabled', fallback='false')):
+                test_task_action = QAction('Test Task', self)
+                test_task_action.triggered.connect(self.__create_test_task)
+                self.menuBar().addAction(test_task_action)
+        except ValueError:
+            pass
 
         self.content_frame = QSplitter()
         self.content_frame.addWidget(self.tree)
@@ -180,6 +198,54 @@ class MainWindow(QMainWindow):
         dialog.layout().addWidget(frame)
         dialog.exec_()
         sys_exit(exit_value)
+
+    def _task_queue_handler(self):
+        """
+        Forwards the task queue, called by timer every run of the event loop
+        """
+        self.__task_queue.run()
+        try:
+            task = self.__task_queue.pop()
+        except IndexError:
+            return
+
+        if task.failed:
+            if task.error_handler:
+                task.error_handler(task)
+            else:
+                self.unhandled_tasks.append(task)
+        else:
+            if task.callback:
+                task.callback(task)
+            else:
+                self.unhandled_task.append(task)
+
+    def queue_task(self, task):
+        """
+        add a task to the queue to be executed in order of priority
+        """
+        self.__task_queue.push(task)
+
+    def __create_test_task(self):
+        from random import choice # pylint: disable=import-outside-toplevel
+        from time import sleep # pylint: disable=import-outside-toplevel
+        def fib(n): # pylint: disable=invalid-name
+            """ using inefficient implementation on purpose """
+            if n <= 1:
+                return n
+            return fib(n-1) + fib(n-2)
+
+        def callback_(task):
+            self.show_error(str(task.result))
+
+        test_task = Task(
+            partial(choice([fib, sleep]), choice([23, 32, 42])),
+            "Test Task",
+            TaskPriority.CREATE_SEARCH_INDEX,
+            callback=callback_
+            )
+
+        self.queue_task(test_task)
 
     def create_password_store(self, password_store_root):
         """
@@ -416,11 +482,13 @@ class MainWindow(QMainWindow):
                 self.tree.select_item(path_to_folder=password_dir,
                                       name=pass_dialog.password_name_input.text())
 
-
     def refresh_password_store(self):
         """
         Refreshes the password store and reloads it.
         """
+        self._refresh_password_store()
+
+    def _refresh_password_store(self):
         logger = logging.getLogger(__name__)
         logger.info('refresh_password_store')
         self.tree.refresh_tree()
@@ -554,12 +622,12 @@ def main():
     except KeyError:
         password_store_root = Path('~/.password-store').expanduser()
 
-    app = QApplication()
+    app = QApplication(argv)
     window = MainWindow(password_store_root)
     window.setWindowTitle('Keyswarm')
     window.resize(800, 600)
     window.show()
-    app.exec_()
+    sys_exit(app.exec_())
 
 
 if __name__ == '__main__':
