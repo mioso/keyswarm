@@ -64,6 +64,7 @@ class PassUiFileSystemTree(QTreeWidget):
         self.setDropIndicatorShown(True)
         self.setDragEnabled(True)
         self.refresh_tree()
+        self.setStyleSheet('QTreeView {qproperty-animated: true;}')
 
     def __repr__(self):
         return f'PassUiFileSystemTree(root={repr(self.root)})'

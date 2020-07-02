@@ -36,6 +36,7 @@ class RecipientList(QListWidget):
     """
     def __init__(self):
         QListWidget.__init__(self)
+        self.setStyleSheet('QListView { qproperty-alternatingRowColors: true; }')
 
     def _add_recipients(self, list_of_recipient_data):
         for name, checked, enabled in list_of_recipient_data:
