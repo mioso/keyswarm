@@ -27,7 +27,8 @@ from .pass_file_system import PassFileSystem
 from .task_queue import TaskQueue, Task, TaskPriority
 from .ui_filesystem_tree import PassUiFileSystemTree
 from .ui_helper import (apply_error_style_to_widget, selection_dialog,
-                        a_b_dialog_or_exit, confirm_error, clone_password_store_dialog)
+                        a_b_dialog_or_exit, confirm_error, confirm_info,
+                        clone_password_store_dialog)
 from .ui_password_view import PasswordView
 from .ui_password_dialog import PasswordDialog
 from .ui_recipients import RecipientList
@@ -490,9 +491,23 @@ class MainWindow(QMainWindow):
 
     def _refresh_password_store(self):
         logger = logging.getLogger(__name__)
-        logger.info('refresh_password_store')
-        self.tree.refresh_tree()
-        self.create_new_search_index()
+        logger.info('refresh_password_store button triggered')
+        def index_callback_(task):
+            self.show_info('refreshed_search_index')
+        def tree_callback_(task):
+            self.show_info('refreshed tree')
+        refresh_tree_task = Task(callable_=self.tree.refresh_tree,
+                                 description='refresh tree',
+                                 priority=TaskPriority.CREATE_FILE_TREE,
+                                 callback=tree_callback_)
+        logger.info('queuing refresh tree task')
+        self.queue_task(refresh_tree_task)
+        create_search_index_task = Task(callable_=self.create_new_search_index,
+                                        description='refresch search index',
+                                        priority=TaskPriority.CREATE_SEARCH_INDEX,
+                                        callback=index_callback_)
+        logger.info('queuing create search index task')
+        self.queue_task(create_search_index_task)
 
     def reencrypt_files(self):
         """
@@ -555,6 +570,37 @@ class MainWindow(QMainWindow):
         error_confirm_button.clicked.connect(partial(confirm_error, error_widget))
         error_widget.layout().addWidget(error_confirm_button)
         self.main_frame.layout().insertWidget(0, error_widget)
+
+    def show_info(self, info_message):
+        """
+        display an error message to the user inside the main window
+        :param error_message: string displayed to the user
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug('show_info: %r', info_message)
+        info_widget = QFrame()
+        info_widget.setLayout(QHBoxLayout())
+        info_widget.layout().addWidget(QLabel(info_message))
+        info_widget.layout().addStretch(2**16)
+        info_widget.setStyleSheet((
+            'QFrame {'
+            '    margin: 0px;'
+            '    padding: 0px;'
+            '    color: white;'
+            '    background-color: lightblue;'
+            '    border-radius: 0.5em;'
+            '}'
+            ''
+            'QPushButton {'
+            '    color: white;'
+            '    background-color: #00000000;'
+            '    border-style: none;'
+            '}'))
+        info_confirm_button = QPushButton()
+        info_confirm_button.setIcon(QIcon.fromTheme('window-close'))
+        info_confirm_button.clicked.connect(partial(confirm_info, info_widget))
+        info_widget.layout().addWidget(info_confirm_button)
+        self.main_frame.layout().insertWidget(0, info_widget)
 
 
 def generate_key_dialog():

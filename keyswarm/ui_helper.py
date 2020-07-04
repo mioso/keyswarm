@@ -184,6 +184,16 @@ def confirm_error(error_widget):
     error_widget.setParent(None)
 
 
+def confirm_info(info_widget):
+    """
+    Confirm an error message, removing the widget displaying it
+    :param error_widget: QWidget outer most container of the error message
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug('confirm_info: %r', info_widget)
+    info_widget.setParent(None)
+
+
 def apply_error_style_to_widget(widget):
     """
     apply a stylesheet to the given QWidget indicating something is wrong with it
@@ -193,6 +203,6 @@ def apply_error_style_to_widget(widget):
         '  color: white;'
         '  background-color: darkred;'
         '}'))
-    
+
 def clear_widget_style_sheet(widget):
     widget.setStyleSheet('')
