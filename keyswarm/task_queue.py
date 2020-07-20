@@ -6,9 +6,10 @@ Each TaskQueue uses a concurrent.futures.ThreadPoolExecutor.
 TaskPriority is used by TaskQueue so store both pending and finished Task Objects in a heapq.
 """
 
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
-from heapq import heapify, heappop, heappush
+from heapq import heappop, heappush
 import logging
 import weakref
 
@@ -18,6 +19,7 @@ class TaskPriority(IntEnum):
 
     Task objects are sorted by their TaskPriority in ascending order
     """
+    CONFIG_LOAD = -10000
     GIT_CLONE = -1000
     GIT_CYCLE = 0
     GIT_PULL = 1
@@ -26,19 +28,19 @@ class TaskPriority(IntEnum):
     CREATE_SEARCH_INDEX = 1000
 
 class Task():
-    def __init__(self, callable_, description, priority, **kwargs):
-        """
-        Create a Task object
+    """
+    Create a Task object
 
-        :param callable_: callable with no parameters/all required parameters baked in
-        (See `funtools.partial`)
-        :param description: str user-friendly description displayable while the task is in progress
-        :param priority: TaskPriority priority of the task in relation to other tasks
-        :param callback: callable custom handler expecting the task as parameter
-        :param error_handler: callable error handler expecting the task as parameter
-        :param context: addidional context for result/error handler, not passed to callable_
-        :param abortable: Boolean states whether the task is safe to abort, defaults to False
-        """
+    :param callable_: callable with no parameters/all required parameters baked in
+    (See `funtools.partial`)
+    :param description: str user-friendly description displayable while the task is in progress
+    :param priority: TaskPriority priority of the task in relation to other tasks
+    :param callback: callable custom handler expecting the task as parameter
+    :param error_handler: callable error handler expecting the task as parameter
+    :param context: addidional context for result/error handler, not passed to callable_
+    :param abortable: Boolean states whether the task is safe to abort, defaults to False
+    """
+    def __init__(self, callable_, description, priority, **kwargs):
         self.priority = priority
         self.callable = callable_
         self.description = description
@@ -111,6 +113,8 @@ class TaskQueue():
         tasks of the priority in the list used as value from the queue
     :param max_workers: int used for ThreadPoolExecutor, default 1
     """
+
+    __status_tuple = namedtuple('TaskQueueStatus', ['finished', 'running', 'pending', 'blocked'])
 
     # pylint: disable=too-many-instance-attributes
     def __init__(self, block_lists=None, kill_lists=None, max_workers=1):
@@ -211,3 +215,35 @@ class TaskQueue():
         :return: [TaskPriority] the task priorities being removed
         """
         return self.__kill_lists.get(task_priority, [])
+
+    @staticmethod
+    def _get_task_descriptions(tasks):
+        return list(map(lambda a: a.description, tasks))
+
+    def get_finished_task_descriptions(self):
+        """ Returns the descriptions of the unhandled finished tasks """
+        return TaskQueue._get_task_descriptions(self.__finished_tasks)
+
+    def get_running_task_descriptions(self):
+        """ Returns the descriptions of the currently running tasks """
+        return TaskQueue._get_task_descriptions(map(lambda a: a[0], self.__running_tasks))
+
+    def get_pending_task_descriptions(self):
+        """ Returns the descriptions of the tasks waiting to be run """
+        return TaskQueue._get_task_descriptions(self.__pending_tasks)
+
+    def get_blocked_task_descriptions(self):
+        """ Returns the description of the tasks that currently cannot run """
+        return TaskQueue._get_task_descriptions(self.__blocked_tasks)
+
+    def get_status(self):
+        """
+        Returns a named tuple with the descriptions for
+        `finished`, `running`, `pending` and `blocked` tasks
+        """
+        return TaskQueue.__status_tuple(
+            finished=self.get_finished_task_descriptions(),
+            running=self.get_running_task_descriptions(),
+            pending=self.get_pending_task_descriptions(),
+            blocked=self.get_blocked_task_descriptions()
+            )

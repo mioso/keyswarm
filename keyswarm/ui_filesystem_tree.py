@@ -13,6 +13,7 @@ from PySide2.QtCore import Qt
 
 from .git_handler import GitError
 from .pass_file_system import PassFileSystem
+from .task_queue import Task, TaskPriority
 
 class PassUIFileSystemItem(QTreeWidgetItem):
     """
@@ -52,12 +53,13 @@ class PassUiFileSystemTree(QTreeWidget):
     """
     A Pass UI Tree representing the pass Filesystem
     """
-    def __init__(self, root, config, file_system=None, no_git_override=False):
+    def __init__(self, root, config, queue_functor, file_system=None, no_git_override=False):
         QTreeWidget.__init__(self)
-        self.root = str(root)
-        self.config = config
-        self.file_system = file_system or PassFileSystem(root, config=config,
-                                                         no_git_override=no_git_override)
+        self.__root = str(root)
+        self.__config = config
+        self.__queue_functor = queue_functor
+        self.__file_system = file_system or PassFileSystem(root, config=config,
+                                                           no_git_override=no_git_override)
         self.setHeaderLabel('PasswordStore')
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -65,24 +67,62 @@ class PassUiFileSystemTree(QTreeWidget):
         self.setDragEnabled(True)
         self.refresh_tree()
         self.setStyleSheet('QTreeView {qproperty-animated: true;}')
+        self.itemSelectionChanged.connect(self.on_item_selection_changed)
 
     def __repr__(self):
-        return f'PassUiFileSystemTree(root={repr(self.root)})'
+        return f'PassUiFileSystemTree(root={repr(self.__root)})'
 
-    def refresh_tree(self, node=None):
+    @property
+    def file_system(self):
+        return self.__file_system
+
+    def refresh_tree(self):
         """
         recursively refreshes PassUIFileSystem Tree to match its Filessystem representation.
-        :param node: Node to start with
         :return: None
         """
         logger = logging.getLogger(__name__)
-        logger.debug('refresh_tree: %r', node)
+
+        #TODO once desyncing task below is fixed make refresh_password_store create its own task and call it here
+        # right now TaskPriority can't handle the order of execution so this is necessary
+        def tmp_callback(task):
+            logger.debug('tmp_callback: %r', task)
+            self.__refresh_tree()
+
+        task = Task(
+            self.__file_system.refresh_password_store,
+            "Refreshing Password Store",
+            TaskPriority.GIT_PULL,
+            callback=tmp_callback,
+            error_handler=None,
+            abortable=False # Don't abort git calls
+            )
+
+# TODO FIXME currently causes UI desync
+#        def callback(task):
+#            logger.debug('refresh_tree: done: %r', task)
+#
+#        task = Task(
+#            self.__refresh_tree,
+#            'Refreshing Password Tree',
+#            TaskPriority.CREATE_FILE_TREE,
+#            callback=callback,
+#            error_handler=None,
+#            abortable=False # TODO set to True once that behaviour has been defined
+#            )
+        logger.debug('refresh_tree: %r', task)
+
+        self.__queue_functor(task)
+
+    def __refresh_tree(self, node=None):
+        logger = logging.getLogger(__name__)
+        logger.debug('__refresh_tree: %r', node)
         root_node = False
         if not node:
-            logger.info('refresh_tree')
+            logger.info('__refresh_tree')
             root_node = True
-            self.file_system.refresh_password_store()
-            node = PassUIFileSystemItem(self.root, '')
+            #self.__file_system.refresh_password_store() #TODO remove this line
+            node = PassUIFileSystemItem(self.__root, '')
             self.invisibleRootItem().takeChildren()
             self.addTopLevelItem(node)
             node.setExpanded(True)
@@ -93,14 +133,11 @@ class PassUiFileSystemTree(QTreeWidget):
                 child_node.setText(0, filesystem_item.replace('.gpg', ''))
                 node.addChild(child_node)
                 if child_node.isdir:
-                    self.refresh_tree(child_node)
+                    self.__refresh_tree(child_node)
                     child_node.setExpanded(True)
         if root_node:
             self.sortItems(0, Qt.SortOrder(0))
-            window = self.window()
-            if isinstance(window, QMainWindow):
-                self.setCurrentItem(self.topLevelItem(0))
-                window.clear_search()
+            self.setCurrentItem(self.topLevelItem(0))
 
     def select_item(self, path_to_folder, name):
         """
@@ -157,8 +194,8 @@ class PassUiFileSystemTree(QTreeWidget):
         logger = logging.getLogger(__name__)
         value = None
         try:
-            value = self.file_system.handle(self.currentItem().file_system_path,
-                                            self.currentItem().name)
+            value = self.__file_system.handle(self.currentItem().file_system_path,
+                                              self.currentItem().name)
             logger.debug('on_item_selection_changed: value: %r', value)
         except ValueError:
             self.window().right_content_frame.layout().setCurrentWidget(
@@ -212,11 +249,11 @@ class PassUiFileSystemTree(QTreeWidget):
             logger.debug('PassUiFileSystemTree: dropEvent: target_folder: %r', target_folder)
 
             if dragged_item.isfile:
-                self.file_system.move_password_file(
+                self.__file_system.move_password_file(
                     path_to_old_folder=source_folder, old_name=name,
                     path_to_new_folder=target_folder, new_name=name)
             else:
-                self.file_system.move_password_folder(
+                self.__file_system.move_password_folder(
                     path_to_old_parent_folder=source_folder, old_name=name,
                     path_to_new_parent_folder=target_folder, new_name=name)
         except GitError as error:

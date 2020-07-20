@@ -40,10 +40,24 @@ class MainWindow(QMainWindow):
     """
     # pylint: disable=too-many-instance-attributes
     def __init__(self, password_store_root):
-        # pylint: disable=too-many-statements
         QMainWindow.__init__(self)
 
-        logger = logging.getLogger()
+        logger = logging.getLogger(__name__)
+
+        self.main_frame = None
+        self.content_frame = None
+        self.right_content_frame = None
+        self.password_browser_group = None
+        self.user_list_group = None
+        self.tool_bar = None
+        self._status_bar = self.statusBar()
+
+        self.password_store_root = password_store_root
+        self.config = None
+        self.tree = None
+        self.searcher = None
+
+        self._init_view()
 
         self.__task_queue = TaskQueue()
         self.unhandled_tasks = []
@@ -52,26 +66,74 @@ class MainWindow(QMainWindow):
         self.__task_timer.timeout.connect(self._task_queue_handler)
         self.__task_timer.start()
 
-        self.main_frame = QFrame()
-        self.main_frame.setLayout(QVBoxLayout())
-        self.setCentralWidget(self.main_frame)
-
-        self.password_store_root = password_store_root
         self.config = get_config(password_store_root)
         try:
             self.get_user_key()
             logger.info('trying to open password store')
-            self.tree = PassUiFileSystemTree(password_store_root, self.config)
+            try:
+                self.tree = PassUiFileSystemTree(password_store_root, self.config, self.queue_task)
+            except Exception as error: # pylint: disable=broad-except
+                self.critical_error_message(str(error)) #TODO proper error message
         except FileNotFoundError:
             logger.info('creating new password store')
             self.create_password_store(password_store_root)
         except GitError as error:
             self.show_error(error.__repr__())
-            self.tree = PassUiFileSystemTree(password_store_root, self.config,
-                                             no_git_override=True)
+            try:
+                self.tree = PassUiFileSystemTree(password_store_root, self.config, self.queue_task,
+                                                 no_git_override=True)
+            except Exception as error: # pylint: disable=broad-except
+                self.critical_error_message(str(error)) #TODO proper error message
         import_gpg_keys(password_store_root)
-        self.searcher = None
 
+        self._init_action_bar()
+
+        self.content_frame = QSplitter()
+        self.content_frame.addWidget(self.tree)
+        self.main_frame.layout().addWidget(self.content_frame, stretch=2**16)
+
+        try:
+            if strtobool(self.config.get('debug', 'enabled', fallback='false')):
+                test_task_action = QAction('Test Task', self)
+                test_task_action.triggered.connect(self.__create_test_task)
+                self.menuBar().addAction(test_task_action)
+        except ValueError:
+            pass
+
+        self.right_content_frame = QFrame()
+        self.right_content_frame.setStyleSheet('''QFrame: {margin: 0px;padding: 0px;}''')
+        self.right_content_frame.setLayout(QStackedLayout())
+        self.content_frame.addWidget(self.right_content_frame)
+
+        self.password_browser_group = PasswordView(config=self.config, tree=self.tree)
+        self.right_content_frame.layout().addWidget(self.password_browser_group)
+
+        self.user_list_group = QGroupBox('Authorized Keys')
+        self.user_list_group.setLayout(QVBoxLayout())
+        self.user_list = RecipientList()
+        self.user_list_group.layout().addWidget(self.user_list)
+        self.user_list_save_button = QPushButton('save')
+        self.user_list_save_button.clicked.connect(self.reencrypt_files)
+        self.user_list_group.layout().addWidget(self.user_list_save_button)
+        self.right_content_frame.layout().addWidget(self.user_list_group)
+
+        self.right_content_frame.empty_frame = QFrame()
+        self.right_content_frame.layout().addWidget(self.right_content_frame.empty_frame)
+        self.right_content_frame.layout().setCurrentWidget(self.right_content_frame.empty_frame)
+
+        self._init_search_frame()
+        self.create_new_search_index()
+        self._init_status_bar()
+
+    def _init_status_bar(self):
+        self._status_bar.showMessage("Initializing...")
+
+    def _init_view(self):
+        self.main_frame = QFrame()
+        self.main_frame.setLayout(QVBoxLayout())
+        self.setCentralWidget(self.main_frame)
+
+    def _init_action_bar(self):
         exit_action = QAction('Exit', self)
         exit_action.setShortcut('Ctrl+q')
         exit_action.triggered.connect(self.close)
@@ -92,43 +154,7 @@ class MainWindow(QMainWindow):
         refresh_action.triggered.connect(self.refresh_password_store)
         self.menuBar().addAction(refresh_action)
 
-        try:
-            if strtobool(self.config.get('debug', 'enabled', fallback='false')):
-                test_task_action = QAction('Test Task', self)
-                test_task_action.triggered.connect(self.__create_test_task)
-                self.menuBar().addAction(test_task_action)
-        except ValueError:
-            pass
-
-        self.content_frame = QSplitter()
-        self.content_frame.addWidget(self.tree)
-        self.main_frame.layout().addWidget(self.content_frame, stretch=2**16)
-
-        self.right_content_frame = QFrame()
-        self.right_content_frame.setStyleSheet('''QFrame: {margin: 0px;padding: 0px;}''')
-        self.right_content_frame.setLayout(QStackedLayout())
-        self.content_frame.addWidget(self.right_content_frame)
-
-        self.password_browser_group = PasswordView(config=self.config, tree=self.tree)
-        self.right_content_frame.layout().addWidget(self.password_browser_group)
-
-        self.tree.itemSelectionChanged.connect(self.tree.on_item_selection_changed)
-
-        self.user_list_group = QGroupBox('Authorized Keys')
-        self.user_list_group.setLayout(QVBoxLayout())
-        self.user_list = RecipientList()
-        self.user_list_group.layout().addWidget(self.user_list)
-        self.user_list_save_button = QPushButton('save')
-        self.user_list_save_button.clicked.connect(self.reencrypt_files)
-        self.user_list_group.layout().addWidget(self.user_list_save_button)
-        self.right_content_frame.layout().addWidget(self.user_list_group)
-
-        self.right_content_frame.empty_frame = QFrame()
-        self.right_content_frame.layout().addWidget(self.right_content_frame.empty_frame)
-        self.right_content_frame.layout().setCurrentWidget(self.right_content_frame.empty_frame)
-
-        self.create_new_search_index()
-
+    def _init_search_frame(self):
         self.tool_bar = self.addToolBar('search')
         search_frame = QFrame()
         search_frame.setLayout(QVBoxLayout())
@@ -199,16 +225,40 @@ class MainWindow(QMainWindow):
         dialog.exec_()
         sys_exit(exit_value)
 
+    def _handle_task_status(self, status):
+        logger = logging.getLogger(__name__)
+        if status.running or status.blocked or status.pending or status.finished:
+            logger.debug('_handle_task_status: status: %r', status)
+
+        if status.running:
+            message = f'running: {status.running[0]}'
+        elif status.blocked:
+            message = f'blocked: {status.blocked[0]}'
+        elif status.pending:
+            message = f'pending: {status.pending[0]}'
+        elif status.finished:
+            message = f'finished: {status.finished[0]}'
+        else:
+            # this does happen one task handling cylcle later than is could
+            message = 'done'
+            self.setDisabled(False)
+
+        self._status_bar.showMessage(message)
+
     def _task_queue_handler(self):
         """
         Forwards the task queue, called by timer every run of the event loop
         """
+        logger = logging.getLogger(__name__)
         self.__task_queue.run()
+        self._handle_task_status(self.__task_queue.get_status())
+
         try:
             task = self.__task_queue.pop()
         except IndexError:
             return
 
+        logger.debug('_task_queue_handler: task: %r', task)
         if task.failed:
             if task.error_handler:
                 task.error_handler(task)
@@ -224,9 +274,13 @@ class MainWindow(QMainWindow):
         """
         add a task to the queue to be executed in order of priority
         """
+        logger = logging.getLogger(__name__)
+        logger.debug('queue_task: task: %r', task)
+        self.setDisabled(True)
         self.__task_queue.push(task)
 
     def __create_test_task(self):
+        # TODO remove this method
         from random import choice # pylint: disable=import-outside-toplevel
         from time import sleep # pylint: disable=import-outside-toplevel
         def fib(n): # pylint: disable=invalid-name
@@ -240,8 +294,8 @@ class MainWindow(QMainWindow):
 
         test_task = Task(
             partial(choice([fib, sleep]), choice([23, 32, 42])),
-            "Test Task",
-            TaskPriority.CREATE_SEARCH_INDEX,
+            f'Test Task: {choice(range(2**32))}',
+            choice(list(TaskPriority)),
             callback=callback_
             )
 
@@ -276,7 +330,8 @@ class MainWindow(QMainWindow):
                     logger.debug('create_password_store: %r', repo_info)
                     file_system = PassFileSystem.clone_password_store(
                         password_store_root, repo_info, self.config)
-                    self.tree = PassUiFileSystemTree(password_store_root, self.config, file_system)
+                    self.tree = PassUiFileSystemTree(password_store_root, self.config,
+                                                     self.queue_task, file_system)
                     return
                 except GitError as error:
                     self.critical_error_message(str(error))
@@ -291,7 +346,8 @@ class MainWindow(QMainWindow):
                 file_system = PassFileSystem.initialize_password_store(
                     password_store_root=password_store_root, config=self.config,
                     use_git=git_or_plain == 'git')
-                self.tree = PassUiFileSystemTree(password_store_root, self.config, file_system)
+                self.tree = PassUiFileSystemTree(password_store_root, self.config,
+                                                 self.queue_task, file_system)
         except PermissionError as error:
             logger.critical(error)
             self.critical_error_message('Unable to create password store at %r, permission denied'
@@ -344,6 +400,7 @@ class MainWindow(QMainWindow):
         """
         search for the raw query written in the search bar and display possible results
         """
+        # TODO decide wether this should be considered blocking for the UI
         logger = logging.getLogger(__name__)
         if not self.search:
             logger.info('search: no searcher')
@@ -397,8 +454,34 @@ class MainWindow(QMainWindow):
         """
         create a new search index from the password tree
         """
-        logging.getLogger(__name__).info('create_new_search_index')
-        self.searcher = PasswordSearch(file_system_tree=self.tree)
+        logger = logging.getLogger(__name__)
+        logger.info('create_new_search_index')
+
+        self.clear_search()
+
+        def callback(task):
+            self.searcher = task.result
+            # Redo current search with new searcher
+            self.search()
+
+        def error_handler(task):
+            self.show_error(str(task.exception)) # TODO proper error message
+
+        task = Task(
+            partial(self._create_new_search_index, self.tree),
+            'Creating Search Index',
+            TaskPriority.CREATE_SEARCH_INDEX,
+            callback=callback,
+            error_handler=error_handler,
+            abortable=False # TODO set to True once that behaviour has been defined
+            )
+        logger.debug('create_new_search_index: %r', task)
+        self.queue_task(task)
+
+    @staticmethod
+    def _create_new_search_index(tree):
+        logging.getLogger(__name__).debug('_create_new_search_index')
+        return PasswordSearch(file_system_tree=tree)
 
     def add_folder(self):
         """
@@ -486,9 +569,7 @@ class MainWindow(QMainWindow):
         """
         Refreshes the password store and reloads it.
         """
-        self._refresh_password_store()
-
-    def _refresh_password_store(self):
+        #TODO rework password tree to use QFileSystemModel to see if refresh_tree can be dropped
         logger = logging.getLogger(__name__)
         logger.info('refresh_password_store')
         self.tree.refresh_tree()
