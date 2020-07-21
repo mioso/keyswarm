@@ -15,6 +15,11 @@ from .pass_file_system import PassFile
 from .ui_filesystem_tree import PassUiFileSystemTree
 
 
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_search_debug_logging():
+    """ enable debug logging for the search module """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
+
 class PasswordSearch:
     """
     Provides metadata search over a PassUiFileSystemTree.
