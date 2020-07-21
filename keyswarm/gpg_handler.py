@@ -31,7 +31,7 @@ def get_binary():
 
     :return: the binary which returned version 2
     """
-    logger = logging.getLogger()
+    logger = logging.getLogger(__name__)
     regex = re_compile(r'gpg \(GnuPG\) ([1-2])\..*')
 
     gpg_subprocess = Popen(['gpg', '--version'], stdout=PIPE, stderr=None)

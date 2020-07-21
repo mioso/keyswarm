@@ -2,8 +2,9 @@
 This module provides the main application window and the main function.
 """
 
+# pylint: disable=too-many-instance-attributes
+
 from configparser import DuplicateSectionError
-from distutils.util import strtobool
 from functools import partial
 import logging
 from os import path
@@ -20,118 +21,134 @@ from PySide2.QtGui import QIcon
 # pylint: enable=no-name-in-module
 
 from .config import get_config, save_config, get_user_config
-from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
-from .git_handler import GitError, git_soft_clean
+from .decoder import enable_decoder_debug_logging
+from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys,
+                          enable_gpg_debug_logging)
+from .git_handler import GitError, git_soft_clean, enable_git_debug_logging
 from .name_filter import is_valid_file_name
-from .pass_file_system import PassFileSystem
-from .task_queue import TaskQueue, Task, TaskPriority
-from .ui_filesystem_tree import PassUiFileSystemTree
+from .pass_file_format_parser import enable_file_format_debug_logging
+from .pass_file_system import PassFileSystem, enable_file_system_debug_logging
+from .ui_filesystem_tree import PassUiFileSystemTree, enable_tree_view_debug_logging
 from .ui_helper import (apply_error_style_to_widget, selection_dialog,
                         a_b_dialog_or_exit, confirm_error, clone_password_store_dialog)
-from .ui_password_view import PasswordView
-from .ui_password_dialog import PasswordDialog
-from .ui_recipients import RecipientList
-from .search import PasswordSearch
+from .ui_password_view import PasswordView, enable_password_view_debug_logging
+from .ui_password_dialog import PasswordDialog, enable_password_dialog_debug_logging
+from .ui_recipients import RecipientList, enable_recipient_view_debug_logging
+from .search import PasswordSearch, enable_search_debug_logging
+from .task_queue import TaskQueue, Task, TaskPriority, enable_task_queue_debug_logging
+from .types import RightFrameContentType
 
 
 class MainWindow(QMainWindow):
     """
     Multipass Main Window
     """
-    # pylint: disable=too-many-instance-attributes
     def __init__(self, password_store_root):
+        # TODO every instance attribute initialization that requires more than two statements is to be moved to its own init function for decluttering
         QMainWindow.__init__(self)
 
-        logger = logging.getLogger(__name__)
-
-        self.main_frame = None
-        self.content_frame = None
-        self.right_content_frame = None
-        self.password_browser_group = None
-        self.user_list_group = None
-        self.tool_bar = None
+        self.__config = None
+        self.__task_queue = TaskQueue()
+        self.__task_timer = None
+        self._main_frame = None
+        self._content_frame = None
+        self._right_content_frame = None
+        self._password_browser_group = None
+        self._user_list_group = None
+        self._tool_bar = None
         self._status_bar = self.statusBar()
-
-        self.password_store_root = password_store_root
-        self.config = None
-        self.tree = None
-        self.searcher = None
+        self._password_store_root = password_store_root
+        self._tree = None
+        self._searcher = None
+        self._content_frame = None
+        self._right_content_frame = None
+        self._password_browser_group = None
+        self._user_list_group = None
+        self.unhandled_tasks = []
 
         self._init_view()
+        self._init_task_timer()
+        self._init_config()
+        self._init_action_bar()
+        self._init_content_frame()
+        self._init_search_frame()
+        self.create_new_search_index()
+        self._init_status_bar()
+        self._init_debug()
 
-        self.__task_queue = TaskQueue()
-        self.unhandled_tasks = []
+    @property
+    def config(self):
+        """ returns the config used """
+        return self.__config
+
+    def _init_config(self):
+        logger = logging.getLogger(__name__)
+        self.__config = get_config(self._password_store_root)
+        try:
+            self.get_user_key()
+            logger.info('trying to open password store')
+            try:
+                self._tree = PassUiFileSystemTree(self._password_store_root, self.__config,
+                                                  self.queue_task)
+            except Exception as error: # pylint: disable=broad-except
+                self.critical_error_message(str(error)) #TODO proper error message
+        except FileNotFoundError:
+            logger.info('creating new password store')
+            self.create_password_store(self._password_store_root)
+        except GitError as error:
+            self.show_error(error.__repr__())
+            try:
+                self._tree = PassUiFileSystemTree(self._password_store_root, self.__config,
+                                                  self.queue_task, no_git_override=True)
+            except Exception as error: # pylint: disable=broad-except
+                self.critical_error_message(str(error)) #TODO proper error message
+        import_gpg_keys(self._password_store_root)
+
+    def _init_debug(self):
+        if self.__config.getboolean('debug', 'enabled', fallback=False):
+            test_task_action = QAction('Test Task', self)
+            test_task_action.triggered.connect(self.__create_test_task)
+            self.menuBar().addAction(test_task_action)
+
+    def _init_content_frame(self):
+        self._content_frame = QSplitter()
+        self._content_frame.addWidget(self._tree)
+        self._main_frame.layout().addWidget(self._content_frame, stretch=2**16)
+
+        self._right_content_frame = QFrame()
+        self._right_content_frame.setStyleSheet('''QFrame: {margin: 0px;padding: 0px;}''')
+        self._right_content_frame.setLayout(QStackedLayout())
+        self._content_frame.addWidget(self._right_content_frame)
+
+        self._password_browser_group = PasswordView(config=self.__config, tree=self._tree)
+        self._right_content_frame.layout().addWidget(self._password_browser_group)
+
+        self._user_list_group = QGroupBox('Authorized Keys')
+        self._user_list_group.setLayout(QVBoxLayout())
+        self._user_list = RecipientList()
+        self._user_list_group.layout().addWidget(self._user_list)
+        self._user_list_save_button = QPushButton('save')
+        self._user_list_save_button.clicked.connect(self.reencrypt_files)
+        self._user_list_group.layout().addWidget(self._user_list_save_button)
+        self._right_content_frame.layout().addWidget(self._user_list_group)
+
+        self._right_content_frame.empty_frame = QFrame()
+        self._right_content_frame.layout().addWidget(self._right_content_frame.empty_frame)
+        self._right_content_frame.layout().setCurrentWidget(self._right_content_frame.empty_frame)
+
+    def _init_task_timer(self):
         self.__task_timer = QTimer(self)
         self.__task_timer.setInterval(50) # 0 avoids downtime but creates too much cpu load
         self.__task_timer.timeout.connect(self._task_queue_handler)
         self.__task_timer.start()
 
-        self.config = get_config(password_store_root)
-        try:
-            self.get_user_key()
-            logger.info('trying to open password store')
-            try:
-                self.tree = PassUiFileSystemTree(password_store_root, self.config, self.queue_task)
-            except Exception as error: # pylint: disable=broad-except
-                self.critical_error_message(str(error)) #TODO proper error message
-        except FileNotFoundError:
-            logger.info('creating new password store')
-            self.create_password_store(password_store_root)
-        except GitError as error:
-            self.show_error(error.__repr__())
-            try:
-                self.tree = PassUiFileSystemTree(password_store_root, self.config, self.queue_task,
-                                                 no_git_override=True)
-            except Exception as error: # pylint: disable=broad-except
-                self.critical_error_message(str(error)) #TODO proper error message
-        import_gpg_keys(password_store_root)
-
-        self._init_action_bar()
-
-        self.content_frame = QSplitter()
-        self.content_frame.addWidget(self.tree)
-        self.main_frame.layout().addWidget(self.content_frame, stretch=2**16)
-
-        try:
-            if strtobool(self.config.get('debug', 'enabled', fallback='false')):
-                test_task_action = QAction('Test Task', self)
-                test_task_action.triggered.connect(self.__create_test_task)
-                self.menuBar().addAction(test_task_action)
-        except ValueError:
-            pass
-
-        self.right_content_frame = QFrame()
-        self.right_content_frame.setStyleSheet('''QFrame: {margin: 0px;padding: 0px;}''')
-        self.right_content_frame.setLayout(QStackedLayout())
-        self.content_frame.addWidget(self.right_content_frame)
-
-        self.password_browser_group = PasswordView(config=self.config, tree=self.tree)
-        self.right_content_frame.layout().addWidget(self.password_browser_group)
-
-        self.user_list_group = QGroupBox('Authorized Keys')
-        self.user_list_group.setLayout(QVBoxLayout())
-        self.user_list = RecipientList()
-        self.user_list_group.layout().addWidget(self.user_list)
-        self.user_list_save_button = QPushButton('save')
-        self.user_list_save_button.clicked.connect(self.reencrypt_files)
-        self.user_list_group.layout().addWidget(self.user_list_save_button)
-        self.right_content_frame.layout().addWidget(self.user_list_group)
-
-        self.right_content_frame.empty_frame = QFrame()
-        self.right_content_frame.layout().addWidget(self.right_content_frame.empty_frame)
-        self.right_content_frame.layout().setCurrentWidget(self.right_content_frame.empty_frame)
-
-        self._init_search_frame()
-        self.create_new_search_index()
-        self._init_status_bar()
-
     def _init_status_bar(self):
         self._status_bar.showMessage("Initializing...")
 
     def _init_view(self):
-        self.main_frame = QFrame()
-        self.main_frame.setLayout(QVBoxLayout())
-        self.setCentralWidget(self.main_frame)
+        self._main_frame = QFrame()
+        self._main_frame.setLayout(QVBoxLayout())
+        self.setCentralWidget(self._main_frame)
 
     def _init_action_bar(self):
         exit_action = QAction('Exit', self)
@@ -155,53 +172,55 @@ class MainWindow(QMainWindow):
         self.menuBar().addAction(refresh_action)
 
     def _init_search_frame(self):
-        self.tool_bar = self.addToolBar('search')
+        self._tool_bar = self.addToolBar('search')
         search_frame = QFrame()
         search_frame.setLayout(QVBoxLayout())
-        self.tool_bar.setMovable(False)
-        self.tool_bar.search_bar = QLineEdit()
-        self.tool_bar.search_bar.setPlaceholderText('Search')
-        self.tool_bar.search_bar.textEdited.connect(self.search)
-        search_frame.layout().addWidget(self.tool_bar.search_bar)
-        self.tool_bar.search_results = QListWidget()
-        self.tool_bar.search_results.currentItemChanged.connect(self._select_search_result)
-        search_frame.layout().addWidget(self.tool_bar.search_results)
-        self.tool_bar.search_results.hide()
-        self.tool_bar.addWidget(search_frame)
+        self._tool_bar.setMovable(False)
+        self._tool_bar.search_bar = QLineEdit()
+        self._tool_bar.search_bar.setPlaceholderText('Search')
+        self._tool_bar.search_bar.textEdited.connect(self.search)
+        search_frame.layout().addWidget(self._tool_bar.search_bar)
+        self._tool_bar.search_results = QListWidget()
+        self._tool_bar.search_results.currentItemChanged.connect(self._select_search_result)
+        search_frame.layout().addWidget(self._tool_bar.search_results)
+        self._tool_bar.search_results.hide()
+        self._tool_bar.addWidget(search_frame)
 
-        self.tool_bar.search_options = QFrame()
-        self.tool_bar.search_options.setLayout(QHBoxLayout())
-        search_frame.layout().addWidget(self.tool_bar.search_options)
-        self.tool_bar.search_options.button_group = QButtonGroup()
-        self.tool_bar.search_options.radio_button_normal = QRadioButton('normal')
-        self.tool_bar.search_options.radio_button_glob = QRadioButton('*auto-glob*')
-        self.tool_bar.search_options.radio_button_glob_prefix = QRadioButton('*auto-glob')
-        self.tool_bar.search_options.radio_button_glob_suffix = QRadioButton('auto-glob*')
-        self.tool_bar.search_options.radio_button_fuzzy = QRadioButton('auto-fuzzy~')
-        self.tool_bar.search_options.button_group.addButton(
-            self.tool_bar.search_options.radio_button_normal)
-        self.tool_bar.search_options.button_group.addButton(
-            self.tool_bar.search_options.radio_button_glob)
-        self.tool_bar.search_options.button_group.addButton(
-            self.tool_bar.search_options.radio_button_glob_prefix)
-        self.tool_bar.search_options.button_group.addButton(
-            self.tool_bar.search_options.radio_button_glob_suffix)
-        self.tool_bar.search_options.button_group.addButton(
-            self.tool_bar.search_options.radio_button_fuzzy)
-        self.tool_bar.search_options.layout().addWidget(
-            self.tool_bar.search_options.radio_button_normal)
-        self.tool_bar.search_options.layout().addWidget(
-            self.tool_bar.search_options.radio_button_glob)
-        self.tool_bar.search_options.layout().addWidget(
-            self.tool_bar.search_options.radio_button_glob_prefix)
-        self.tool_bar.search_options.layout().addWidget(
-            self.tool_bar.search_options.radio_button_glob_suffix)
-        self.tool_bar.search_options.layout().addWidget(
-            self.tool_bar.search_options.radio_button_fuzzy)
-        self.tool_bar.search_options.layout().addStretch(2**16)
-        self.tool_bar.search_options.radio_button_glob_suffix.setChecked(True)
-        self.tool_bar.search_options.button_group.buttonToggled.connect(self.search)
-        self.tool_bar.search_options.hide()
+        self._tool_bar.search_options = QFrame()
+        self._tool_bar.search_options.setLayout(QHBoxLayout())
+        search_frame.layout().addWidget(self._tool_bar.search_options)
+        self._tool_bar.search_options.button_group = QButtonGroup()
+        self._tool_bar.search_options.radio_button_normal = QRadioButton('normal')
+        self._tool_bar.search_options.radio_button_glob = QRadioButton('*auto-glob*')
+        self._tool_bar.search_options.radio_button_glob_prefix = QRadioButton('*auto-glob')
+        self._tool_bar.search_options.radio_button_glob_suffix = QRadioButton('auto-glob*')
+        self._tool_bar.search_options.radio_button_fuzzy = QRadioButton('auto-fuzzy~')
+        self._tool_bar.search_options.button_group.addButton(
+            self._tool_bar.search_options.radio_button_normal)
+        self._tool_bar.search_options.button_group.addButton(
+            self._tool_bar.search_options.radio_button_glob)
+        self._tool_bar.search_options.button_group.addButton(
+            self._tool_bar.search_options.radio_button_glob_prefix)
+        self._tool_bar.search_options.button_group.addButton(
+            self._tool_bar.search_options.radio_button_glob_suffix)
+        self._tool_bar.search_options.button_group.addButton(
+            self._tool_bar.search_options.radio_button_fuzzy)
+        self._tool_bar.search_options.layout().addWidget(
+            self._tool_bar.search_options.radio_button_normal)
+        self._tool_bar.search_options.layout().addWidget(
+            self._tool_bar.search_options.radio_button_glob)
+        self._tool_bar.search_options.layout().addWidget(
+            self._tool_bar.search_options.radio_button_glob_prefix)
+        self._tool_bar.search_options.layout().addWidget(
+            self._tool_bar.search_options.radio_button_glob_suffix)
+        self._tool_bar.search_options.layout().addWidget(
+            self._tool_bar.search_options.radio_button_fuzzy)
+        self._tool_bar.search_options.layout().addStretch(2**16)
+        self._tool_bar.search_options.radio_button_glob_suffix.setChecked(True)
+        self._tool_bar.search_options.button_group.buttonToggled.connect(self.search)
+        self._tool_bar.search_options.hide()
+
+        self.create_new_search_index()
 
     @staticmethod
     def critical_error_message(message, exit_value=1):
@@ -263,12 +282,14 @@ class MainWindow(QMainWindow):
             if task.error_handler:
                 task.error_handler(task)
             else:
+                self.show_error(f"{task.description} failed:\n{task.exception}")
                 self.unhandled_tasks.append(task)
         else:
             if task.callback:
                 task.callback(task)
             else:
                 self.unhandled_task.append(task)
+                logger.debug('unhandled_tasks: %r', self.unhandled_tasks)
 
     def queue_task(self, task):
         """
@@ -329,8 +350,8 @@ class MainWindow(QMainWindow):
                     repo_info = clone_password_store_dialog()
                     logger.debug('create_password_store: %r', repo_info)
                     file_system = PassFileSystem.clone_password_store(
-                        password_store_root, repo_info, self.config)
-                    self.tree = PassUiFileSystemTree(password_store_root, self.config,
+                        password_store_root, repo_info, self.__config)
+                    self._tree = PassUiFileSystemTree(password_store_root, self.__config,
                                                      self.queue_task, file_system)
                     return
                 except GitError as error:
@@ -346,7 +367,7 @@ class MainWindow(QMainWindow):
                 file_system = PassFileSystem.initialize_password_store(
                     password_store_root=password_store_root, config=self.config,
                     use_git=git_or_plain == 'git')
-                self.tree = PassUiFileSystemTree(password_store_root, self.config,
+                self._tree = PassUiFileSystemTree(password_store_root, self.__config,
                                                  self.queue_task, file_system)
         except PermissionError as error:
             logger.critical(error)
@@ -371,7 +392,7 @@ class MainWindow(QMainWindow):
         logger.debug('get_user_key: list_of_private_keys: %r', list_of_private_keys)
 
         try:
-            user_key_id = self.config['gpg']['user_key_id']
+            user_key_id = self.__config['gpg']['user_key_id']
             logger.debug('get_user_key: config_key: %r', user_key_id)
             if user_key_id in list_of_private_keys:
                 return user_key_id
@@ -392,8 +413,8 @@ class MainWindow(QMainWindow):
             self.config.add_section('gpg')
         except DuplicateSectionError:
             pass
-        self.config['gpg']['user_key_id'] = user_key_id
-        save_config(self.config)
+        self.__config['gpg']['user_key_id'] = user_key_id
+        save_config(self.__config)
         return user_key_id
 
     def search(self):
@@ -406,30 +427,30 @@ class MainWindow(QMainWindow):
             logger.info('search: no searcher')
             return
 
-        glob_prefix = (self.tool_bar.search_options.radio_button_glob.isChecked() or
-                       self.tool_bar.search_options.radio_button_glob_prefix.isChecked())
-        glob_suffix = (self.tool_bar.search_options.radio_button_glob.isChecked() or
-                       self.tool_bar.search_options.radio_button_glob_suffix.isChecked())
-        fuzzy = self.tool_bar.search_options.radio_button_fuzzy.isChecked()
+        glob_prefix = (self._tool_bar.search_options.radio_button_glob.isChecked() or
+                       self._tool_bar.search_options.radio_button_glob_prefix.isChecked())
+        glob_suffix = (self._tool_bar.search_options.radio_button_glob.isChecked() or
+                       self._tool_bar.search_options.radio_button_glob_suffix.isChecked())
+        fuzzy = self._tool_bar.search_options.radio_button_fuzzy.isChecked()
 
-        results = self.searcher.search(self.tool_bar.search_bar.text(),
+        results = self._searcher.search(self._tool_bar.search_bar.text(),
                                        glob_prefix=glob_prefix,
                                        glob_suffix=glob_suffix,
                                        fuzzy=fuzzy)
-        self.tool_bar.search_results.clear()
-        self.tool_bar.search_results.dict = {}
+        self._tool_bar.search_results.clear()
+        self._tool_bar.search_results.dict = {}
         if len(results) > 0:
             for result in results:
                 item_name = f'''{result['path']}/{result['name']}'''
-                self.tool_bar.search_results.dict[item_name] = result
-                self.tool_bar.search_results.addItem(item_name)
-            self.tool_bar.search_results.show()
+                self._tool_bar.search_results.dict[item_name] = result
+                self._tool_bar.search_results.addItem(item_name)
+            self._tool_bar.search_results.show()
         else:
-            self.tool_bar.search_results.hide()
-        if len(self.tool_bar.search_bar.text()) > 0:
-            self.tool_bar.search_options.show()
+            self._tool_bar.search_results.hide()
+        if len(self._tool_bar.search_bar.text()) > 0:
+            self._tool_bar.search_options.show()
         else:
-            self.tool_bar.search_options.hide()
+            self._tool_bar.search_options.hide()
 
     def clear_search(self):
         """
@@ -437,18 +458,18 @@ class MainWindow(QMainWindow):
         """
         logger = logging.getLogger(__name__)
         logger.info('clear_search')
-        self.tool_bar.search_bar.setText('')
-        self.tool_bar.search_results.clear()
-        self.tool_bar.search_results.hide()
-        self.tool_bar.search_results.dict = {}
+        self._tool_bar.search_bar.setText('')
+        self._tool_bar.search_results.clear()
+        self._tool_bar.search_results.hide()
+        self._tool_bar.search_results.dict = {}
 
     def _select_search_result(self, current, previous):
         logger = logging.getLogger(__name__)
         logger.debug('_select_search_result: %r %r', current, previous)
         item_name = current.text()
         logger.debug('_select_search_result: %r', item_name)
-        result = self.tool_bar.search_results.dict[item_name]
-        self.tree.select_item(result['path'], result['name'])
+        result = self._tool_bar.search_results.dict[item_name]
+        self._tree.select_item(result['path'], result['name'])
 
     def create_new_search_index(self):
         """
@@ -460,7 +481,7 @@ class MainWindow(QMainWindow):
         self.clear_search()
 
         def callback(task):
-            self.searcher = task.result
+            self._searcher = task.result
             # Redo current search with new searcher
             self.search()
 
@@ -468,7 +489,7 @@ class MainWindow(QMainWindow):
             self.show_error(str(task.exception)) # TODO proper error message
 
         task = Task(
-            partial(self._create_new_search_index, self.tree),
+            partial(self._create_new_search_index, self._tree),
             'Creating Search Index',
             TaskPriority.CREATE_SEARCH_INDEX,
             callback=callback,
@@ -514,15 +535,15 @@ class MainWindow(QMainWindow):
         confirm_button.clicked.connect(folder_name_check)
 
         if folder_dialog.exec_():
-            logger.debug('add_folder: tree: %r', self.tree)
-            current_item = self.tree.currentItem()
+            logger.debug('add_folder: tree: %r', self._tree)
+            current_item = self._tree.currentItem()
             logger.debug('add_folder: current_item: %r', current_item)
             folder_path = current_item.file_system_path if current_item.isfile else str(
                 Path(current_item.file_system_path, current_item.name))
             folder_name = folder_name_input.text()
-            self.tree.file_system.create_folder(folder_path, folder_name)
-            self.tree.refresh_tree()
-            self.tree.select_item(folder_path, folder_name)
+            self._tree.file_system.create_folder(folder_path, folder_name)
+            self._tree.refresh_tree()
+            self._tree.select_item(folder_path, folder_name)
 
     def add_password(self):
         """
@@ -532,16 +553,16 @@ class MainWindow(QMainWindow):
         logger = logging.getLogger(__name__)
 
         optional_fields = []
-        if 'attributes' in self.config:
+        if 'attributes' in self.__config:
             optional_fields = list(map(lambda a: (a[0], '', a[1]),
-                                       dict(self.config['attributes']).items()))
+                                       dict(self.__config['attributes']).items()))
             optional_fields.sort()
         logger.debug('add_password: optional_fields: %r', optional_fields)
 
         pass_dialog = PasswordDialog(optional_fields=optional_fields)
         if pass_dialog.exec_():
-            logger.debug('add_password: tree: %r', self.tree)
-            current_item = self.tree.currentItem()
+            logger.debug('add_password: tree: %r', self._tree)
+            current_item = self._tree.currentItem()
             logger.debug('add_password: current_item: %r', current_item)
             if current_item.isdir:
                 password_dir = path.join(current_item.file_system_path, current_item.name)
@@ -549,7 +570,7 @@ class MainWindow(QMainWindow):
                 password_dir = current_item.file_system_path
             password_file = pass_dialog.to_pass_file()
             try:
-                self.tree.file_system.create_password_file(
+                self._tree.file_system.create_password_file(
                     path_to_folder=password_dir,
                     name=pass_dialog.password_name_input.text(),
                     password_file=password_file)
@@ -560,9 +581,9 @@ class MainWindow(QMainWindow):
                 logger.debug('add_password: %r', error)
                 self.show_missing_key_error()
             finally:
-                self.tree.refresh_tree()
+                self._tree.refresh_tree()
                 self.create_new_search_index()
-                self.tree.select_item(path_to_folder=password_dir,
+                self._tree.select_item(path_to_folder=password_dir,
                                       name=pass_dialog.password_name_input.text())
 
     def refresh_password_store(self):
@@ -572,7 +593,7 @@ class MainWindow(QMainWindow):
         #TODO rework password tree to use QFileSystemModel to see if refresh_tree can be dropped
         logger = logging.getLogger(__name__)
         logger.info('refresh_password_store')
-        self.tree.refresh_tree()
+        self._tree.refresh_tree()
         self.create_new_search_index()
 
     def reencrypt_files(self):
@@ -581,15 +602,15 @@ class MainWindow(QMainWindow):
         """
         logger = logging.getLogger(__name__)
 
-        list_of_keys = self.user_list.get_checked_item_names()
+        list_of_keys = self._user_list.get_checked_item_names()
         logger.debug('reencrypt_files: list_of_keys: %r', list_of_keys)
         if not list_of_keys:
             logger.info('reencrypt_files: no recipients selected')
             self.show_error('no recipients selected')
             return
 
-        folder_path = path.join(self.tree.currentItem().file_system_path,
-                                self.tree.currentItem().name)
+        folder_path = path.join(self._tree.currentItem().file_system_path,
+                                self._tree.currentItem().name)
         logger.info('reencrypt_files: folder_path: %r', folder_path)
 
         gpg_id_path = path.join(folder_path, '.gpg-id')
@@ -597,7 +618,7 @@ class MainWindow(QMainWindow):
 
         try:
             write_gpg_id_file(gpg_id_path, list_of_keys)
-            self.tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
+            self._tree.file_system.recursive_reencrypt(folder_path, list_of_keys)
         except (ValueError, GitError) as error:
             logger.debug('reencrypt_files: %r', error)
             self.show_error(str(error))
@@ -635,7 +656,25 @@ class MainWindow(QMainWindow):
         error_confirm_button.setIcon(QIcon.fromTheme('window-close'))
         error_confirm_button.clicked.connect(partial(confirm_error, error_widget))
         error_widget.layout().addWidget(error_confirm_button)
-        self.main_frame.layout().insertWidget(0, error_widget)
+        self._main_frame.layout().insertWidget(0, error_widget)
+
+    def show_right_frame_content(self, content_type, value=None):
+        """
+        set the content type of the frame to the right of the tree
+
+        :param content_type: RightFrameContentType type of the content to show
+        :param value: return value of PassFileSystem.handle
+        """
+        if content_type == RightFrameContentType.EMPTY:
+            self._right_content_frame.layout().setCurrentWidget(self._right_conent_frame.empty)
+        elif content_type == RightFrameContentType.PASSWORD_VIEW:
+            self._right_content_frame.layout().setCurrentWidget(self._password_browser_group)
+            self._password_browser_group.load_pass_file(value)
+        elif content_type == RightFrameContentType.RECIPIENT_VIEW:
+            self._right_content_frame.layout().setCurrentWidget(self._user_list_group)
+            self._user_list.refresh_recipients(value)
+        else:
+            raise ValueError("Invalid content type.")
 
 
 def generate_key_dialog():
@@ -667,12 +706,7 @@ def generate_key_dialog():
     return None
 
 
-def main():
-    """
-    runs the application
-    """
-    user_config = get_user_config()
-
+def __setup_debugging(user_config):
     try:
         log_level = {
             'debug': logging.DEBUG,
@@ -682,21 +716,46 @@ def main():
             'error': logging.ERROR,
             'fatal': logging.FATAL,
             'critical': logging.CRITICAL
-        }[user_config['logging']['log_level']]
-
-        try:
-            file_name = user_config['logging']['file_name']
-            try:
-                file_mode = user_config['logging']['file_mode']
-            except KeyError:
-                file_mode = 'w'
-        except KeyError:
-            file_name = None
-            file_mode = None
-
-        logging.basicConfig(level=log_level, filename=file_name, filemode=file_mode)
+        }[user_config.get('logging', 'log_level', fallback='info')]
     except KeyError:
-        logging.basicConfig(level=logging.INFO)
+        log_level = logging.INFO
+
+    if user_config.getboolean('logging', 'debug_git', fallback=False):
+        enable_git_debug_logging()
+    if user_config.getboolean('logging', 'debug_gpg', fallback=False):
+        enable_gpg_debug_logging()
+    if user_config.getboolean('logging', 'debug_search', fallback=False):
+        enable_search_debug_logging()
+    if user_config.getboolean('logging', 'debug_file_format', fallback=False):
+        enable_file_format_debug_logging()
+    if user_config.getboolean('logging', 'debug_file_system', fallback=False):
+        enable_file_system_debug_logging()
+    if user_config.getboolean('logging', 'debug_tree_view', fallback=False):
+        enable_tree_view_debug_logging()
+    if user_config.getboolean('logging', 'debug_recipient_view', fallback=False):
+        enable_recipient_view_debug_logging()
+    if user_config.getboolean('logging', 'debug_password_view', fallback=False):
+        enable_password_view_debug_logging()
+    if user_config.getboolean('logging', 'debug_password_dialog', fallback=False):
+        enable_password_dialog_debug_logging()
+    if user_config.getboolean('logging', 'debug_task_queue', fallback=False):
+        enable_task_queue_debug_logging()
+    if user_config.getboolean('logging', 'debug_decoder', fallback=False):
+        enable_decoder_debug_logging()
+
+    file_name = user_config.get('logging', 'file_name', fallback=None)
+    file_mode = user_config.get('logging', 'file_mode', fallback='w') if file_name else None
+
+    logging.basicConfig(level=log_level, filename=file_name, filemode=file_mode)
+
+
+def main():
+    """
+    runs the application
+    """
+    user_config = get_user_config()
+
+    __setup_debugging(user_config)
 
     try:
         password_store_root = user_config['general']['password_store_root']

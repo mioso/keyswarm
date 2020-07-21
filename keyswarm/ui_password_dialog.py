@@ -11,12 +11,18 @@ from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QTextEdit, QDialog, QLineEdit,
                                QPushButton, QVBoxLayout, QGridLayout, QLabel, QSpinBox,
                                QTabWidget, QComboBox)
+# pylint: enable=no-name-in-module
 
 from .generate_passwords import random_password
 from .name_filter import is_valid_file_name
 from .pass_file_format_parser import PassFile
 from .ui_helper import apply_error_style_to_widget, clear_widget_style_sheet
 
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_password_dialog_debug_logging():
+    """ enable password dialog debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 class PasswordGenerationDialog(QDialog):
     """

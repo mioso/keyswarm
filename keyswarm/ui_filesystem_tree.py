@@ -8,12 +8,20 @@ from os import path, listdir
 from pathlib import PurePath
 
 # pylint: disable=no-name-in-module
-from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMainWindow
+from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
 from PySide2.QtCore import Qt
+# pylint: enable=no-name-in-module
 
 from .git_handler import GitError
 from .pass_file_system import PassFileSystem
 from .task_queue import Task, TaskPriority
+from .types import RightFrameContentType
+
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_tree_view_debug_logging():
+    """ enable tree view debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 class PassUIFileSystemItem(QTreeWidgetItem):
     """
@@ -151,8 +159,8 @@ class PassUiFileSystemTree(QTreeWidget):
         logger.debug('select_item: self: %r', self)
         node = self.topLevelItem(0)
         logger.debug('select_item: node: %r', node)
-        logger.debug('select_item: root: %r', self.root)
-        path_ = PurePath(path_to_folder.replace(self.root, ''))
+        logger.debug('select_item: root: %r', self.__root)
+        path_ = PurePath(path_to_folder.replace(self.__root, ''))
         parts = path_.parts
         logger.debug('select_item: path_: %r', path_)
         logger.debug('select_item: parts: %r', parts)
@@ -193,26 +201,23 @@ class PassUiFileSystemTree(QTreeWidget):
         """
         logger = logging.getLogger(__name__)
         value = None
+        item = self.currentItem()
+        if not item:
+            return
         try:
-            value = self.__file_system.handle(self.currentItem().file_system_path,
-                                              self.currentItem().name)
+            value = self.__file_system.handle(item.file_system_path, item.name)
             logger.debug('on_item_selection_changed: value: %r', value)
         except ValueError:
-            self.window().right_content_frame.layout().setCurrentWidget(
-                self.window().right_content_frame.empty_frame)
+            self.window().show_right_frame_content(RightFrameContentType.EMPTY)
             return
         if value is None:
-            self.window().right_content_frame.layout().setCurrentWidget(
-                self.window().right_content_frame.empty_frame)
+            self.window().show_right_frame_content(RightFrameContentType.EMPTY)
             return
         if self.currentItem().isfile:
-            self.window().right_content_frame.layout().setCurrentWidget(
-                self.window().password_browser_group)
-            self.window().password_browser_group.load_pass_file(value)
+            self.window().show_right_frame_content(RightFrameContentType.PASSWORD_VIEW, value=value)
         elif self.currentItem().isdir:
-            self.window().right_content_frame.layout().setCurrentWidget(
-                self.window().user_list_group)
-            self.window().user_list.refresh_recipients(value)
+            self.window().show_right_frame_content(
+                RightFrameContentType.RECIPIENT_VIEW, value=value)
         else:
             logger.warning('on_item_selection_changed: selection is neither file nor directory: %r',
                            self.currentItem())

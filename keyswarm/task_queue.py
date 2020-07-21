@@ -6,12 +6,20 @@ Each TaskQueue uses a concurrent.futures.ThreadPoolExecutor.
 TaskPriority is used by TaskQueue so store both pending and finished Task Objects in a heapq.
 """
 
+# pylint: disable=too-many-instance-attributes
+
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
 from heapq import heappop, heappush
 import logging
 import weakref
+
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_task_queue_debug_logging():
+    """ enable task queue debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 class TaskPriority(IntEnum):
     """
@@ -116,7 +124,6 @@ class TaskQueue():
 
     __status_tuple = namedtuple('TaskQueueStatus', ['finished', 'running', 'pending', 'blocked'])
 
-    # pylint: disable=too-many-instance-attributes
     def __init__(self, block_lists=None, kill_lists=None, max_workers=1):
         self.__pending_tasks = []
         self.__finished_tasks = []

@@ -8,11 +8,17 @@ import logging
 # pylint: disable=no-name-in-module
 from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
+# pylint: enable=no-name-in-module
 
 from .git_handler import GitError
 from .pass_clipboard import copy
 from .ui_password_dialog import PasswordDialog
 
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_password_view_debug_logging():
+    """ enable password view debug logging """
+    logging.getLogger(__name__).setLevel(logging.INFO)
 
 class PasswordView(QGroupBox):
     """

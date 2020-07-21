@@ -2,11 +2,20 @@
 this module provides a recipient list widget based on QLitsWidget
 """
 
+import logging
+
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QListWidget, QListWidgetItem
 from PySide2.QtCore import Qt
+# pylint: enable=no-name-in-module
+
 from .gpg_handler import list_available_keys
 
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_recipient_view_debug_logging():
+    """ enable recipient view debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 # pylint: disable=too-few-public-methods
 class Recipient(QListWidgetItem):

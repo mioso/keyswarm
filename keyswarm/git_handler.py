@@ -3,11 +3,19 @@ this module interacts with the git binary and provides
 pulling, branching, staging, committing and pushing
 """
 
+# pylint: disable=too-many-arguments
+
 from functools import lru_cache
 import logging
 from subprocess import call, PIPE, Popen
 
 from .decoder import try_decode
+
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_git_debug_logging():
+    """ enable git debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 class GitError(Exception):
     """
@@ -202,6 +210,13 @@ def repository_config_has_user_data(repository_path):
 
 
 def repository_config_set_user_data(repository_path, user_name, user_email):
+    """
+    sets user.name and user.email for the git repository
+
+    :param repository_path: PathLike path of the repository
+    :param user_name: str users name handed to git config
+    :param user_email: str users email handed to git config
+    """
     logger = logging.getLogger(__name__)
     logger.debug('repository_config_set_user_data: (%r, %r, %r)',
                  repository_path, user_name, user_email)
