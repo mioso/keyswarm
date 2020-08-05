@@ -56,12 +56,15 @@ class PasswordSearch:
         schema = PasswordSearch.__create_schema()
         self.__index = self.__storage.create_index(schema)
 
-        writer = self.__index.writer()
         node = file_system_tree.topLevelItem(0)
+        if not node:
+            logger.debug('PasswordSearch.__create_search_index:empty tree')
+            return
         child_index = 0
         child_count = node.childCount()
         stack = []
         logger.debug('create_search_index: start of iteration')
+        writer = self.__index.writer()
         while True:
             logger.debug('create_search_index: %r %r (%r/%r)',
                          list(map(lambda a: (a[0].name, a[1], a[2]), stack)),

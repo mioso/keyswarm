@@ -3,6 +3,7 @@ This module provides a pass file system tree as extension of a QTreeWidget.
 No separation of ui and data so far.
 """
 
+from functools import partial
 import logging
 from os import path, listdir
 from pathlib import PurePath
@@ -13,7 +14,7 @@ from PySide2.QtCore import Qt
 # pylint: enable=no-name-in-module
 
 from .git_handler import GitError
-from .pass_file_system import PassFileSystem
+from .pass_file_format_parser import PassFile
 from .task_queue import Task, TaskPriority
 from .types import RightFrameContentType
 
@@ -61,13 +62,12 @@ class PassUiFileSystemTree(QTreeWidget):
     """
     A Pass UI Tree representing the pass Filesystem
     """
-    def __init__(self, root, config, queue_functor, file_system=None, no_git_override=False):
+    def __init__(self, root, config, queue_functor):
         QTreeWidget.__init__(self)
         self.__root = str(root)
         self.__config = config
         self.__queue_functor = queue_functor
-        self.__file_system = file_system or PassFileSystem(root, config=config,
-                                                           no_git_override=no_git_override)
+        self.__file_system = None
         self.setHeaderLabel('PasswordStore')
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -84,6 +84,10 @@ class PassUiFileSystemTree(QTreeWidget):
     def file_system(self):
         return self.__file_system
 
+    def connect_to_file_system(self, file_system):
+        self.__file_system = file_system
+        self.refresh_tree()
+
     def refresh_tree(self):
         """
         recursively refreshes PassUIFileSystem Tree to match its Filessystem representation.
@@ -91,8 +95,10 @@ class PassUiFileSystemTree(QTreeWidget):
         """
         logger = logging.getLogger(__name__)
 
-        #TODO once desyncing task below is fixed make refresh_password_store create its own task and call it here
-        # right now TaskPriority can't handle the order of execution so this is necessary
+        if not self.__file_system:
+            logger.debug("refresh_tree: not file system")
+            return
+
         def tmp_callback(task):
             logger.debug('tmp_callback: %r', task)
             self.__refresh_tree()
@@ -106,20 +112,7 @@ class PassUiFileSystemTree(QTreeWidget):
             abortable=False # Don't abort git calls
             )
 
-# TODO FIXME currently causes UI desync
-#        def callback(task):
-#            logger.debug('refresh_tree: done: %r', task)
-#
-#        task = Task(
-#            self.__refresh_tree,
-#            'Refreshing Password Tree',
-#            TaskPriority.CREATE_FILE_TREE,
-#            callback=callback,
-#            error_handler=None,
-#            abortable=False # TODO set to True once that behaviour has been defined
-#            )
         logger.debug('refresh_tree: %r', task)
-
         self.__queue_functor(task)
 
     def __refresh_tree(self, node=None):
@@ -129,7 +122,6 @@ class PassUiFileSystemTree(QTreeWidget):
         if not node:
             logger.info('__refresh_tree')
             root_node = True
-            #self.__file_system.refresh_password_store() #TODO remove this line
             node = PassUIFileSystemItem(self.__root, '')
             self.invisibleRootItem().takeChildren()
             self.addTopLevelItem(node)
@@ -160,6 +152,8 @@ class PassUiFileSystemTree(QTreeWidget):
         node = self.topLevelItem(0)
         logger.debug('select_item: node: %r', node)
         logger.debug('select_item: root: %r', self.__root)
+        if not node:
+            return
         path_ = PurePath(path_to_folder.replace(self.__root, ''))
         parts = path_.parts
         logger.debug('select_item: path_: %r', path_)
@@ -200,27 +194,51 @@ class PassUiFileSystemTree(QTreeWidget):
         :return: None
         """
         logger = logging.getLogger(__name__)
-        value = None
         item = self.currentItem()
         if not item:
+            logger.debug('on_item_selection_changed: no item')
             return
-        try:
-            value = self.__file_system.handle(item.file_system_path, item.name)
-            logger.debug('on_item_selection_changed: value: %r', value)
-        except ValueError:
-            self.window().show_right_frame_content(RightFrameContentType.EMPTY)
+        if not self.__file_system:
+            logger.debug('on_item_selection_changed: no file system')
             return
-        if value is None:
-            self.window().show_right_frame_content(RightFrameContentType.EMPTY)
-            return
-        if self.currentItem().isfile:
-            self.window().show_right_frame_content(RightFrameContentType.PASSWORD_VIEW, value=value)
-        elif self.currentItem().isdir:
+
+        def callback_(task):
+            if not task.result:
+                #TODO avoid self.window()
+                self.window().show_right_frame_content(RightFrameContentType.EMPTY)
+                return
+
+            if isinstance(task.result, PassFile):
+                #TODO avoid self.window()
+                self.window().show_right_frame_content(
+                    RightFrameContentType.PASSWORD_VIEW,
+                    value=task.result)
+                return
+
+            #TODO avoid self.window()
             self.window().show_right_frame_content(
-                RightFrameContentType.RECIPIENT_VIEW, value=value)
-        else:
-            logger.warning('on_item_selection_changed: selection is neither file nor directory: %r',
-                           self.currentItem())
+                RightFrameContentType.RECIPIENT_VIEW,
+                value=task.result)
+
+        def error_handler(task):
+            if isinstance(task.exception, ValueError):
+                logger.debug(task.exception)
+            else:
+                logger.warning(task.exception)
+            #TODO avoid self.window()
+            self.window().show_right_frame_content(RightFrameContentType.EMPTY)
+
+        task = Task(
+            partial(self._on_item_selection_changed, item),
+            f'Retrieving information for {item.file_system_path}',
+            TaskPriority.FILE_SYSTEM_HANDLE,
+            callback=callback_,
+            error_handler=error_handler)
+
+        self.__queue_functor(task)
+
+    def _on_item_selection_changed(self, item):
+        return self.__file_system.handle(item.file_system_path, item.name)
 
     # pylint: disable=invalid-name
     def dropEvent(self, event):
@@ -238,6 +256,10 @@ class PassUiFileSystemTree(QTreeWidget):
                      self.itemAt(event.pos()))
         logger.debug('PassUiFileSystemTree: dropEvent: self.selectedItems(): %r',
                      self.selectedItems())
+
+        if not self.__file_system:
+            logger.debug('dropEvent: no file system')
+            return
 
         try:
             dragged_item = self.selectedItems()[0]

@@ -28,9 +28,11 @@ class TaskPriority(IntEnum):
     Task objects are sorted by their TaskPriority in ascending order
     """
     CONFIG_LOAD = -10000
+    INIT_PASSWORD_STORE = -9000
     GIT_CLONE = -1000
     GIT_CYCLE = 0
     GIT_PULL = 1
+    FILE_SYSTEM_HANDLE = 90
     REENCRYPT_TREE = 100
     CREATE_FILE_TREE = 900
     CREATE_SEARCH_INDEX = 1000
@@ -149,7 +151,7 @@ class TaskQueue():
         """
         logger = logging.getLogger(__name__)
         for finished_task in filter(lambda a: a[1].done(), self.__running_tasks):
-            logger.debug('%r finished', finished_task[0])
+            logger.debug('TaskQueue.run: %r finished', finished_task[0])
             self.__running_tasks.remove(finished_task)
             heappush(self.__finished_tasks, finished_task[0])
 
@@ -160,7 +162,7 @@ class TaskQueue():
                 return
 
             self.__running_tasks.append((task, self.__executor.submit(task.execute_)))
-            logger.debug('%r started', task)
+            logger.debug('TaskQueue.run: %r started', task)
 
     def pop(self):
         """

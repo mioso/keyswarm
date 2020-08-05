@@ -7,15 +7,18 @@ This module provides the main application window and the main function.
 from configparser import DuplicateSectionError
 from functools import partial
 import logging
+from logging.handlers import SocketHandler
+from ipaddress import ip_address
 from os import path
 from pathlib import Path
+import re
 from sys import argv, exit as sys_exit
 
 # pylint: disable=no-name-in-module
 from PySide2.QtCore import QTimer
 from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, QAction,
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
-                               QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
+                               QGridLayout, QLabel, QSplitter, QStackedWidget, QListWidget,
                                QButtonGroup, QRadioButton, QFormLayout)
 from PySide2.QtGui import QIcon
 # pylint: enable=no-name-in-module
@@ -47,6 +50,7 @@ class MainWindow(QMainWindow):
         # TODO every instance attribute initialization that requires more than two statements is to be moved to its own init function for decluttering
         QMainWindow.__init__(self)
 
+        self.__readonly = False
         self.__config = None
         self.__task_queue = TaskQueue()
         self.__task_timer = None
@@ -59,6 +63,7 @@ class MainWindow(QMainWindow):
         self._status_bar = self.statusBar()
         self._password_store_root = password_store_root
         self._tree = None
+        self._tree_frame = None
         self._searcher = None
         self._content_frame = None
         self._right_content_frame = None
@@ -67,42 +72,61 @@ class MainWindow(QMainWindow):
         self.unhandled_tasks = []
 
         self._init_view()
+        self._init_action_bar()
+        self._init_search_frame()
+        self._init_status_bar()
         self._init_task_timer()
         self._init_config()
-        self._init_action_bar()
+        self._init_password_store()
         self._init_content_frame()
-        self._init_search_frame()
-        self.create_new_search_index()
-        self._init_status_bar()
         self._init_debug()
 
     @property
+    def readonly(self):
+        """ wether editing is disabled """
+        return self.__readonly
+
+    @property
     def config(self):
-        """ returns the config used """
+        """ config currently being used """
         return self.__config
 
     def _init_config(self):
-        logger = logging.getLogger(__name__)
         self.__config = get_config(self._password_store_root)
+
+    def _init_password_store(self):
+        def callback_(task):
+            self._tree.connect_to_file_system(task.result)
+            import_gpg_keys(self._password_store_root)
+            self.create_new_search_index()
+
+        task = Task(
+            self._init_password_store_,
+            'Initialising password store',
+            TaskPriority.INIT_PASSWORD_STORE,
+            callback=callback_
+            )
+
+        self.queue_task(task)
+
+    def _init_password_store_(self):
+        logger = logging.getLogger(__name__)
         try:
             self.get_user_key()
             logger.info('trying to open password store')
-            try:
-                self._tree = PassUiFileSystemTree(self._password_store_root, self.__config,
-                                                  self.queue_task)
-            except Exception as error: # pylint: disable=broad-except
-                self.critical_error_message(str(error)) #TODO proper error message
+            return PassFileSystem(
+                self._password_store_root,
+                self.__config,
+                no_git_override=False)
         except FileNotFoundError:
             logger.info('creating new password store')
             self.create_password_store(self._password_store_root)
         except GitError as error:
             self.show_error(error.__repr__())
-            try:
-                self._tree = PassUiFileSystemTree(self._password_store_root, self.__config,
-                                                  self.queue_task, no_git_override=True)
-            except Exception as error: # pylint: disable=broad-except
-                self.critical_error_message(str(error)) #TODO proper error message
-        import_gpg_keys(self._password_store_root)
+            return PassFileSystem(
+                self._password_store_root,
+                self.__config,
+                no_git_override=True)
 
     def _init_debug(self):
         if self.__config.getboolean('debug', 'enabled', fallback=False):
@@ -112,12 +136,13 @@ class MainWindow(QMainWindow):
 
     def _init_content_frame(self):
         self._content_frame = QSplitter()
+        self._tree = PassUiFileSystemTree(
+            self._password_store_root, self.__config, self.queue_task)
         self._content_frame.addWidget(self._tree)
         self._main_frame.layout().addWidget(self._content_frame, stretch=2**16)
 
-        self._right_content_frame = QFrame()
-        self._right_content_frame.setStyleSheet('''QFrame: {margin: 0px;padding: 0px;}''')
-        self._right_content_frame.setLayout(QStackedLayout())
+        self._right_content_frame = QStackedWidget()
+        self._right_content_frame.setStyleSheet('''QStackedWidget: {margin: 0px;padding: 0px;}''')
         self._content_frame.addWidget(self._right_content_frame)
 
         self._password_browser_group = PasswordView(config=self.__config, tree=self._tree)
@@ -220,8 +245,6 @@ class MainWindow(QMainWindow):
         self._tool_bar.search_options.button_group.buttonToggled.connect(self.search)
         self._tool_bar.search_options.hide()
 
-        self.create_new_search_index()
-
     @staticmethod
     def critical_error_message(message, exit_value=1):
         """
@@ -250,7 +273,7 @@ class MainWindow(QMainWindow):
             logger.debug('_handle_task_status: status: %r', status)
 
         if status.running:
-            message = f'running: {status.running[0]}'
+            message = f'{status.running[0]}'
         elif status.blocked:
             message = f'blocked: {status.blocked[0]}'
         elif status.pending:
@@ -259,7 +282,7 @@ class MainWindow(QMainWindow):
             message = f'finished: {status.finished[0]}'
         else:
             # this does happen one task handling cylcle later than is could
-            message = 'done'
+            message = 'ready'
             self.setDisabled(False)
 
         self._status_bar.showMessage(message)
@@ -296,7 +319,8 @@ class MainWindow(QMainWindow):
         add a task to the queue to be executed in order of priority
         """
         logger = logging.getLogger(__name__)
-        logger.debug('queue_task: task: %r', task)
+        logger.debug('queue_task: (%r)', task)
+        #TODO implement task abortion to keep ui enabled
         self.setDisabled(True)
         self.__task_queue.push(task)
 
@@ -349,11 +373,8 @@ class MainWindow(QMainWindow):
                 try:
                     repo_info = clone_password_store_dialog()
                     logger.debug('create_password_store: %r', repo_info)
-                    file_system = PassFileSystem.clone_password_store(
+                    return PassFileSystem.clone_password_store(
                         password_store_root, repo_info, self.__config)
-                    self._tree = PassUiFileSystemTree(password_store_root, self.__config,
-                                                     self.queue_task, file_system)
-                    return
                 except GitError as error:
                     self.critical_error_message(str(error))
                 except ValueError as error:
@@ -364,11 +385,9 @@ class MainWindow(QMainWindow):
                 user_key = self.get_user_key()
                 if not user_key:
                     self.critical_error_message("No private key selected.\nCan't continue.")
-                file_system = PassFileSystem.initialize_password_store(
+                return PassFileSystem.initialize_password_store(
                     password_store_root=password_store_root, config=self.config,
                     use_git=git_or_plain == 'git')
-                self._tree = PassUiFileSystemTree(password_store_root, self.__config,
-                                                 self.queue_task, file_system)
         except PermissionError as error:
             logger.critical(error)
             self.critical_error_message('Unable to create password store at %r, permission denied'
@@ -423,8 +442,8 @@ class MainWindow(QMainWindow):
         """
         # TODO decide wether this should be considered blocking for the UI
         logger = logging.getLogger(__name__)
-        if not self.search:
-            logger.info('search: no searcher')
+        if not self._searcher:
+            logger.debug('search: no searcher')
             return
 
         glob_prefix = (self._tool_bar.search_options.radio_button_glob.isChecked() or
@@ -434,9 +453,9 @@ class MainWindow(QMainWindow):
         fuzzy = self._tool_bar.search_options.radio_button_fuzzy.isChecked()
 
         results = self._searcher.search(self._tool_bar.search_bar.text(),
-                                       glob_prefix=glob_prefix,
-                                       glob_suffix=glob_suffix,
-                                       fuzzy=fuzzy)
+                                        glob_prefix=glob_prefix,
+                                        glob_suffix=glob_suffix,
+                                        fuzzy=fuzzy)
         self._tool_bar.search_results.clear()
         self._tool_bar.search_results.dict = {}
         if len(results) > 0:
@@ -480,13 +499,17 @@ class MainWindow(QMainWindow):
 
         self.clear_search()
 
+        if not self._tree:
+            logger.debug('create_new_search_index: no tree loaded')
+            return
+
         def callback(task):
             self._searcher = task.result
             # Redo current search with new searcher
             self.search()
 
         def error_handler(task):
-            self.show_error(str(task.exception)) # TODO proper error message
+            self.show_error(f'{task.description}: {str(task.exception)}') # TODO proper error message
 
         task = Task(
             partial(self._create_new_search_index, self._tree),
@@ -501,7 +524,11 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _create_new_search_index(tree):
-        logging.getLogger(__name__).debug('_create_new_search_index')
+        logger = logging.getLogger(__name__)
+        logger.debug('_create_new_search_index')
+        if not tree:
+            logger.warning('_create_new_search_tree: task created without data')
+            raise ValueError('None is not a valid Data Model')
         return PasswordSearch(file_system_tree=tree)
 
     def add_folder(self):
@@ -720,33 +747,39 @@ def __setup_debugging(user_config):
     except KeyError:
         log_level = logging.INFO
 
-    if user_config.getboolean('logging', 'debug_git', fallback=False):
-        enable_git_debug_logging()
-    if user_config.getboolean('logging', 'debug_gpg', fallback=False):
-        enable_gpg_debug_logging()
-    if user_config.getboolean('logging', 'debug_search', fallback=False):
-        enable_search_debug_logging()
-    if user_config.getboolean('logging', 'debug_file_format', fallback=False):
-        enable_file_format_debug_logging()
-    if user_config.getboolean('logging', 'debug_file_system', fallback=False):
-        enable_file_system_debug_logging()
-    if user_config.getboolean('logging', 'debug_tree_view', fallback=False):
-        enable_tree_view_debug_logging()
-    if user_config.getboolean('logging', 'debug_recipient_view', fallback=False):
-        enable_recipient_view_debug_logging()
-    if user_config.getboolean('logging', 'debug_password_view', fallback=False):
-        enable_password_view_debug_logging()
-    if user_config.getboolean('logging', 'debug_password_dialog', fallback=False):
-        enable_password_dialog_debug_logging()
-    if user_config.getboolean('logging', 'debug_task_queue', fallback=False):
-        enable_task_queue_debug_logging()
-    if user_config.getboolean('logging', 'debug_decoder', fallback=False):
-        enable_decoder_debug_logging()
+    config_flag_actions = [
+        ('logging', 'debug_git', enable_git_debug_logging),
+        ('logging', 'debug_gpg', enable_gpg_debug_logging),
+        ('logging', 'debug_search', enable_search_debug_logging),
+        ('logging', 'debug_file_format', enable_file_format_debug_logging),
+        ('logging', 'debug_file_system', enable_file_system_debug_logging),
+        ('logging', 'debug_tree_view', enable_tree_view_debug_logging),
+        ('logging', 'debug_recipient_view', enable_recipient_view_debug_logging),
+        ('logging', 'debug_password_view', enable_password_view_debug_logging),
+        ('logging', 'debug_password_dialog', enable_password_dialog_debug_logging),
+        ('logging', 'debug_task_queue', enable_task_queue_debug_logging),
+        ('logging', 'debug_decoder', enable_decoder_debug_logging),
+        ]
+
+    for section, key, action in config_flag_actions:
+        try:
+            if user_config.getboolean(section, key, fallback=False):
+                action()
+        except ValueError:
+            pass
 
     file_name = user_config.get('logging', 'file_name', fallback=None)
     file_mode = user_config.get('logging', 'file_mode', fallback='w') if file_name else None
+    log_handler = user_config.get('logging', 'log_handler', fallback=None)
 
-    logging.basicConfig(level=log_level, filename=file_name, filemode=file_mode)
+    address, port = log_handler.split(' ')
+    address = ip_address(address)
+    log_handler = SocketHandler(str(address), port)
+
+    if log_handler:
+        logging.basicConfig(level=log_level, handlers=[log_handler])
+    else:
+        logging.basicConfig(level=log_level, filename=file_name, filemode=file_mode)
 
 
 def main():
