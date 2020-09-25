@@ -32,6 +32,7 @@ class PasswordSearch:
         self.__tree = file_system_tree
         self.__storage = None
         self.__index = None
+        self.__fields = ['name', 'path', 'comments']
         self.__create_search_index(file_system_tree)
 
     @staticmethod
@@ -93,22 +94,27 @@ class PasswordSearch:
                             'path': path,
                             'comments': pass_file.comments
                             }
+                        logger.debug('__create_search_index: file_attributes: %r', pass_file.attributes)
                         for attribute in pass_file.attributes:
                             try:
                                 key, value = attribute
+                                logger.debug('__create_search_index: (key, value): (%r, %r)', key, value)
                                 if key not in ['name', 'path', 'comments']:
                                     attributes.add(key)
                                     document[key] = value
-                            except ValueError:
-                                pass
+                            except ValueError as error:
+                                logger.debug('__create_search_index: unpack_error: %r', error)
                         documents.append(document)
                     except ValueError as error:
                         logger.debug('create_search_index: %r', error)
         logger.debug('__create_search_index: attributes: %r', attributes)
+        self.__fields.extend(attributes)
         writer = self.__index.writer()
         for attribute in attributes:
+            logger.debug('__create_search_index: adding field for attribute %r', attribute)
             writer.add_field(attribute, TEXT)
         for document in documents:
+            logger.debug('__create_search_index: adding document %r', document)
             writer.add_document(**document)
         writer.commit()
         with self.__index.searcher() as searcher:
@@ -168,7 +174,7 @@ class PasswordSearch:
         with self.__index.searcher() as searcher:
             # pylint: disable=no-member
             logger.debug('search: %r', list(searcher.all_stored_fields()))
-            parser = MultifieldParser(['name', 'path', 'comments'], self.__index.schema)
+            parser = MultifieldParser(self.__fields, self.__index.schema)
             parser.add_plugin(FuzzyTermPlugin())
             parser.add_plugin(PhrasePlugin())
             query = parser.parse(raw_query)
