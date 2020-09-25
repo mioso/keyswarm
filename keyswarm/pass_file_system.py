@@ -22,46 +22,23 @@ class PassFileSystem():
     """
     Interface to the pass file system with the given root path
     """
-    def __init__(self, password_store_root, config=None, git_credentials=None,
-                 no_git_override=False):
+    def __init__(self, password_store_root, config=None, no_git_override=False):
         logger = logging.getLogger(__name__)
-        logger.debug('PassFileSystem.__init__: (%r, %r, %r)', password_store_root, config,
-                     'git_credentials' if git_credentials else None)
+        logger.debug('PassFileSystem.__init__: (%r, %r)', password_store_root, config)
 
         self.password_store_root = password_store_root
         self.config = config or {}
-
-        try:
-            if not git_credentials:
-                git_credentials = self.handle(password_store_root, '.git-credentials.gpg')
-
-            if isinstance(git_credentials, PassFile):
-                attributes = dict(git_credentials.attributes)
-                self.git_credentials = {
-                    'url': attributes['url'],
-                    'username': attributes['username'],
-                    'password': git_credentials.password
-                }
-            else:
-                raise ValueError
-        except (FileNotFoundError, ValueError, KeyError):
-            self.git_credentials = {'url': None, 'username': None, 'password': None}
 
         if (not no_git_override and
                 path_belongs_to_repository(password_store_root) and
                 repository_has_remote(password_store_root)):
             logger.info('PassFileSystem.__init__:git_pull')
-            git_pull(repository_path=password_store_root,
-                     http_url=self.git_credentials['url'],
-                     http_username=self.git_credentials['username'],
-                     http_password=self.git_credentials['password'])
+            git_pull(repository_path=password_store_root)
 
         logger.debug('PassFileSystem.__init__: %r', self)
 
     def __repr__(self):
-        return 'PassFileSystem(%r, %r, %r)' % (
-            self.password_store_root, self.config,
-            'git_credentials' if self.git_credentials['password'] else None)
+        return 'PassFileSystem(%r, %r)' % (self.password_store_root, self.config)
 
     def handle(self, root_path, name):
         """
@@ -140,10 +117,7 @@ class PassFileSystem():
                     branch_name=(f'create_password/{timestamp}/{branch_folder_part}'
                                  f'{make_valid_branch_name(name)}'),
                     commit_message=f'Create password for `{folder_part}{name}` using keyswarm.',
-                    http_url=self.git_credentials['url'],
-                    http_username=self.git_credentials['username'],
-                    http_password=self.git_credentials['password'],
-                    network_timeout=self.config.get('network', 'timeout', fallback=60))
+                    network_timeout=self.config.get('network', 'timeout', fallback=600))
 
             return result
         return False
@@ -175,9 +149,6 @@ class PassFileSystem():
                     branch_name=(f'delete_password/{timestamp}/{branch_folder_part}'
                                  f'{make_valid_branch_name(name)}'),
                     commit_message=(f'Delete password for `{folder_part}{name}` using keyswarm.'),
-                    http_url=self.git_credentials['url'],
-                    http_username=self.git_credentials['username'],
-                    http_password=self.git_credentials['password'],
                     network_timeout=self.config.get('network', 'timeout', fallback=60))
 
         except IsADirectoryError:
@@ -231,9 +202,6 @@ class PassFileSystem():
                                  f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Move password from `{old_folder_part}{old_name}` to `'
                                     f'{new_folder_part}{new_name}` using keyswarm.'),
-                    http_url=self.git_credentials['url'],
-                    http_username=self.git_credentials['username'],
-                    http_password=self.git_credentials['password'],
                     network_timeout=self.config.get('network', 'timeout', fallback=60))
 
 
@@ -279,9 +247,6 @@ class PassFileSystem():
                                  f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Change password for `{old_folder_part}{old_name}` '
                                     f'using keyswarm.'),
-                    http_url=self.git_credentials['url'],
-                    http_username=self.git_credentials['username'],
-                    http_password=self.git_credentials['password'],
                     network_timeout=self.config.get('network', 'timeout', fallback=60))
         else:
             if Path(path_to_new_folder, new_name).exists():
@@ -305,9 +270,6 @@ class PassFileSystem():
                                  f'{make_valid_branch_name(old_name)}'),
                     commit_message=(f'Change/Move password from `{old_folder_part}{old_name}` t'
                                     f'o `{new_folder_part}{new_name}` using keyswarm.'),
-                    http_url=self.git_credentials['url'],
-                    http_username=self.git_credentials['username'],
-                    http_password=self.git_credentials['password'],
                     network_timeout=self.config.get('network', 'timeout', fallback=60))
 
     def create_folder(self, path_to_folder, name):
@@ -398,9 +360,6 @@ class PassFileSystem():
                              f'{make_valid_branch_name(old_name)}'),
                 commit_message=(f'Move folder from `{old_folder_part}{old_name}` to `'
                                 f'{new_folder_part}{new_name}` using keyswarm.'),
-                http_url=self.git_credentials['url'],
-                http_username=self.git_credentials['username'],
-                http_password=self.git_credentials['password'],
                 network_timeout=self.config.get('network', 'timeout', fallback=60))
 
     def search_gpg_id_file(self, path_to_folder):
@@ -476,9 +435,6 @@ class PassFileSystem():
                              f'{make_valid_branch_name(str(relative_path))}'),
                 commit_message=(f'Reencrypt passwords in {relative_path} for changed recipients us'
                                 f'ing keyswarm.'),
-                http_url=self.git_credentials['url'],
-                http_username=self.git_credentials['username'],
-                http_password=self.git_credentials['password'],
                 network_timeout=self.config.get('network', 'timeout', fallback=60))
 
 
@@ -487,9 +443,6 @@ class PassFileSystem():
         logger.info('refresh_password_store:git_pull')
         git_pull(
             repository_path=self.password_store_root,
-            http_url=self.git_credentials['url'],
-            http_username=self.git_credentials['username'],
-            http_password=self.git_credentials['password'],
             timeout=self.config.get('network', 'timeout', fallback=60))
         logger.info('refresh_password_store:import_gpg_keys')
         import_gpg_keys(self.password_store_root)
@@ -529,30 +482,9 @@ class PassFileSystem():
         logger.debug('clone_password_store: (%r, %r)', password_store_root, repo_info)
 
         own_key_id = config['gpg']['user_key_id']
-        if len(repo_info['ssh']['url']) > 0:
-            git_clone(repository_path=password_store_root, url=repo_info['ssh']['url'])
-            file_system = PassFileSystem(password_store_root, config)
-        else:
-            git_clone(repository_path=password_store_root,
-                      url=repo_info['http']['url'],
-                      http_username=repo_info['http']['username'],
-                      http_password=repo_info['http']['password'],
-                      timeout=config.get('network', 'timeout', fallback=60))
-            git_auth = PassFile()
-            git_auth.password = repo_info['http']['password']
-            git_auth.attributes.append(('username', repo_info['http']['username']))
-            git_auth.attributes.append(('url', repo_info['http']['url']))
-            git_auth.root_path = password_store_root
-            git_auth.name = '.git_credentials'
 
-            clear_text = git_auth.get_cleartext().encode()
-            logger.debug('clone_password_store: len(clear_text): %r', len(clear_text))
-            path_to_file = Path(password_store_root, '.git-credentials.gpg')
-            logger.debug('clone_password_store: path_to_file: %r', path_to_file)
-            encrypt(clear_text=clear_text,
-                    list_of_recipients=[own_key_id],
-                    path_to_file=path_to_file)
-            file_system = PassFileSystem(password_store_root, config, git_auth)
+        git_clone(repository_path=password_store_root, url=repo_info['ssh']['url'])
+        file_system = PassFileSystem(password_store_root, config)
 
         if not repository_config_has_user_data(password_store_root):
             regex = re_compile('^([^<]+) <([^>]+)>$')

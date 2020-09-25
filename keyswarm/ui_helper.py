@@ -25,17 +25,7 @@ def clone_password_store_dialog():
     ssh_frame.setLayout(QFormLayout())
     ssh_url_edit = QLineEdit()
     ssh_frame.layout().addRow(dialog.tr('U&RL'), ssh_url_edit)
-    tab_widget.addTab(ssh_frame, 'SSH')
-
-    http_frame = QFrame()
-    http_frame.setLayout(QFormLayout())
-    http_url_edit = QLineEdit()
-    http_username_edit = QLineEdit()
-    http_password_edit = QLineEdit()
-    http_frame.layout().addRow(dialog.tr('U&RL'), http_url_edit)
-    http_frame.layout().addRow(dialog.tr('&Username'), http_username_edit)
-    http_frame.layout().addRow(dialog.tr('&Password'), http_password_edit)
-    tab_widget.addTab(http_frame, 'HTTP')
+    tab_widget.addTab(ssh_frame, 'URL')
 
     button_frame = QFrame()
     button_frame.setLayout(QVBoxLayout())
@@ -49,11 +39,6 @@ def clone_password_store_dialog():
         result = {
             'ssh': {
                 'url': ssh_url_edit.text()
-            },
-            'http': {
-                'url': http_url_edit.text(),
-                'username': http_username_edit.text(),
-                'password': http_password_edit.text()
             },
         }
         logger.debug('clone_password_store_dialog: result: %r', result)

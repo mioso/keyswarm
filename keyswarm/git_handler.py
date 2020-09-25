@@ -5,7 +5,7 @@ pulling, branching, staging, committing and pushing
 
 from functools import lru_cache
 import logging
-from subprocess import call, PIPE, Popen
+from subprocess import PIPE, Popen
 
 from .decoder import try_decode
 
@@ -67,16 +67,6 @@ def get_binary():
     return 'git'
 
 
-def git_config_credential_helper():
-    """
-    sets `credential.helper` to `cache` in the global git config
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('`git config credential.helper cache`')
-    return_code = call([get_binary(), 'config', '--global', 'credential.helper', 'cache'])
-    logger.debug('return_code: %r', return_code)
-
-
 def _split_url(url):
     logger = logging.getLogger(__name__)
     logger.debug('_split_url: (%r)', url)
@@ -91,31 +81,6 @@ def _split_url(url):
     host = splits[1].split('/')[0]
 
     return schema, host
-
-
-def cache_credentials(url, username, password):
-    """
-    writes the credentials for the host extraced from the given url to the git credential cache
-
-    :param url: string url of the remote host or the repository on the remote host
-        must contain schema, must contain host, must not contain userinfo
-        general url shape: `scheme:[//[userinfo@]host[:port]]path[?query][#fragment]`
-        accepted url shape: `scheme://host[:port][/[path][?query][#fragment]]`
-    :param username: string username
-    :param password: string password
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('cache_credentials: (%r, %r, %r)', url, username, password)
-    protocol, host = _split_url(url)
-
-    input_ = f'protocol={protocol}\nhost={host}\nusername={username}\npassword={password}\n\n'
-    logger.debug('cache_credentials: %r', input_)
-    git_config_credential_helper()
-    git_process = Popen([get_binary(), 'credential-cache', 'store'],
-                        stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    stdout, stderr = git_process.communicate(input_.encode('utf-8'), timeout=2)
-    logger.debug('cache_credentials: stdout: %r', stdout)
-    logger.debug('cache_credentials: stderr: %r', stderr)
 
 
 def get_repository_root(directory_path):
@@ -236,15 +201,12 @@ def git_init(directory_path):
         raise GitInitError(try_decode(stderr))
 
 
-def git_clone(repository_path, url, http_username=None, http_password=None, timeout=60):
+def git_clone(repository_path, url, timeout=600):
     """
     performs `git clone`
     """
     logger = logging.getLogger(__name__)
-    logger.debug('git_clone: (%r, %r, %r, %r)', repository_path, url, http_username, http_password)
-
-    if http_username and http_password:
-        cache_credentials(url, http_username, http_password)
+    logger.debug('git_clone: (%r, %r)', repository_path, url)
 
     git_cmd = [get_binary(), 'clone', '--recurse-submodules', url, '--', repository_path]
     logger.debug('git_clone: git_cmd: %r', git_cmd)
@@ -257,8 +219,7 @@ def git_clone(repository_path, url, http_username=None, http_password=None, time
         raise GitCloneError(try_decode(stderr))
 
 
-def git_pull(repository_path, branch_name=None, http_url=None, http_username=None,
-             http_password=None, timeout=60):
+def git_pull(repository_path, branch_name=None, timeout=600):
     """
     performs `git pull` on the given repository
     pulls a branch if given
@@ -271,8 +232,6 @@ def git_pull(repository_path, branch_name=None, http_url=None, http_username=Non
 
     if not path_belongs_to_repository(repository_path):
         return
-    if http_url and http_username and http_password:
-        cache_credentials(http_url, http_username, http_password)
 
     if branch_name:
         git_cmd = [get_binary(), 'pull', 'origin', branch_name, '--']
@@ -386,7 +345,7 @@ def git_commit(repository_path, commit_message):
         raise GitCommitError(try_decode(stderr))
 
 
-def git_push(repository_path, http_url=None, http_username=None, http_password=None, timeout=60):
+def git_push(repository_path, timeout=600):
     """
     performs `git push` on the given repository
 
@@ -397,8 +356,6 @@ def git_push(repository_path, http_url=None, http_username=None, http_password=N
 
     if not path_belongs_to_repository(repository_path):
         return
-    if http_url and http_username and http_password:
-        cache_credentials(http_url, http_username, http_password)
 
     git_process = Popen([get_binary(), 'push'], cwd=repository_path, stdout=PIPE, stderr=PIPE)
     stdout, stderr = git_process.communicate(timeout=timeout)
@@ -409,8 +366,7 @@ def git_push(repository_path, http_url=None, http_username=None, http_password=N
         raise GitPushError(try_decode(stderr))
 
 
-def git_push_set_origin(repository_path, branch_name, http_url=None, http_username=None,
-                        http_password=None, timeout=60):
+def git_push_set_origin(repository_path, branch_name, timeout=600):
     """
     performs `git push --set-origin origin <branch>` on the given repository
     seperate function from git_push for explicities sake
@@ -423,8 +379,6 @@ def git_push_set_origin(repository_path, branch_name, http_url=None, http_userna
 
     if not path_belongs_to_repository(repository_path):
         return
-    if http_url and http_username and http_password:
-        cache_credentials(http_url, http_username, http_password)
 
     git_cmd = [get_binary(), 'push', '--set-upstream', 'origin', branch_name]
     logger.debug('git_push_set_origin: git_cmd: %r', git_cmd)
@@ -491,8 +445,7 @@ def _git_cmd_chain(repository_path, git_cmd_list):
             raise GitError(f'Failed to return to clean state:\n\n{try_decode(stderr)}')
 
 
-def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, http_url=None,
-                     http_username=None, http_password=None, network_timeout=60):
+def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, network_timeout=600):
     """
     performs a series of git commands to add a changed password file to the git repository
 
@@ -503,9 +456,8 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
     """
     logger = logging.getLogger(__name__)
     logger.info('git_commit_cycle: start')
-    logger.debug('git_commit_cycle: (%r, %r, %r, %r, %r, %r, %r, %r)', repository_path,
-                 file_paths, branch_name, commit_message, http_url, http_username,
-                 len(http_password) if http_password else None, network_timeout)
+    logger.debug('git_commit_cycle: (%r, %r, %r, %r, %r)', repository_path,
+                 file_paths, branch_name, commit_message, network_timeout)
 
     if not path_belongs_to_repository(repository_path):
         logger.info('git_commit_cycle: not a repository, done here')
@@ -515,8 +467,7 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
 
     if has_remote:
         logger.info('git_commit_cycle: pull')
-        git_pull(repository_path, http_url=http_url, http_username=http_username,
-                 http_password=http_password, timeout=network_timeout)
+        git_pull(repository_path, timeout=network_timeout)
         logger.info('git_commit_cycle: branch')
         git_branch(repository_path, branch_name)
         logger.info('git_commit_cycle: switch branch')
@@ -529,18 +480,13 @@ def git_commit_cycle(repository_path, file_paths, branch_name, commit_message, h
 
     if has_remote:
         logger.info('git_commit_cycle: push')
-        git_push_set_origin(repository_path, branch_name, http_url=http_url,
-                            http_username=http_username, http_password=http_password,
-                            timeout=network_timeout)
+        git_push_set_origin(repository_path, branch_name, timeout=network_timeout)
         logger.info('git_commit_cycle: checkout master')
         git_checkout_branch(repository_path, 'master')
         logger.info('git_commit_cycle: pull')
-        git_pull(repository_path, http_url=http_url, http_username=http_username,
-                 http_password=http_password, timeout=network_timeout)
+        git_pull(repository_path, timeout=network_timeout)
         logger.info('git_commit_cycle: merge')
-        git_pull(repository_path, branch_name, http_url=http_url, http_username=http_username,
-                 http_password=http_password, timeout=network_timeout)
+        git_pull(repository_path, branch_name, timeout=network_timeout)
         logger.info('git_commit_cycle: push')
-        git_push(repository_path, http_url=http_url, http_username=http_username,
-                 http_password=http_password, timeout=network_timeout)
+        git_push(repository_path, timeout=network_timeout)
     logger.info('git_commit_cycle: done')
