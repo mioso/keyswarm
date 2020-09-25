@@ -17,6 +17,7 @@ from .git_handler import (git_init, git_add, git_commit, git_clone, git_pull, gi
 from .name_filter import make_valid_branch_name
 from .pass_file_format_parser import PassFile
 
+from .hacks import NoGitOverrideHack
 
 class PassFileSystem():
     """
@@ -28,6 +29,7 @@ class PassFileSystem():
 
         self.password_store_root = password_store_root
         self.config = config or {}
+        self.no_git_override = no_git_override
 
         if (not no_git_override and
                 path_belongs_to_repository(password_store_root) and
@@ -86,6 +88,9 @@ class PassFileSystem():
         :param password_file:
         :return:
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no password creation in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('create_password_file: path_to_folder: %r', path_to_folder)
         logger.debug('create_password_file: name: %r', name)
@@ -128,6 +133,9 @@ class PassFileSystem():
         :param path_to_folder: string
         :param name: string
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no password deletion in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('delete_password_file: path_to_folder: %r', path_to_folder)
         logger.debug('delete_password_file: name: %r', name)
@@ -171,6 +179,9 @@ class PassFileSystem():
         :param path_to_new_folder: PathLike
         :param new_name: string
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no password moving in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('move_password_file: path_to_old_folder: %r', path_to_old_folder)
         logger.debug('move_password_file: old_name: %r', old_name)
@@ -216,6 +227,9 @@ class PassFileSystem():
         :param new_name: string
         :param password_file: PassFile
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no password editing in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('change_password_file: path_to_old_folder: %r', path_to_old_folder)
         logger.debug('change_password_file: old_name: %r', old_name)
@@ -279,6 +293,9 @@ class PassFileSystem():
         :param name: string
         :return: None
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no folder creating in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('create_folder: path_to_folder: %r', path_to_folder)
         logger.debug('create_folder: name: %r', name)
@@ -297,6 +314,9 @@ class PassFileSystem():
         :path_to_new_parent_folder: string
         :new_name: string
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no folder moving in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('move_password_folder: path_to_old_parent_folder: %r',
                      path_to_old_parent_folder)
@@ -390,6 +410,9 @@ class PassFileSystem():
         :param list_of_keys: list of strings
         :return: None
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no password reencryption in read only mode')
+
         logger = logging.getLogger(__name__)
         logger.debug('recursive_reencrypt: path_to_folder: %r', path_to_folder)
         logger.debug('recursive_reencrypt: list_of_keys: %r', list_of_keys)
@@ -439,6 +462,9 @@ class PassFileSystem():
 
 
     def refresh_password_store(self):
+        if self.no_git_override:
+            raise NoGitOverrideHack('read only mode is not properly implemented, restart instead')
+
         logger = logging.getLogger(__name__)
         logger.info('refresh_password_store:git_pull')
         git_pull(

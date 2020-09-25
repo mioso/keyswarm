@@ -13,13 +13,16 @@ from .git_handler import GitError
 from .pass_clipboard import copy
 from .ui_password_dialog import PasswordDialog
 
+from .hacks import NoGitOverrideHack
+
 
 class PasswordView(QGroupBox):
     """
     A group box that displays a PassFile
     """
-    def __init__(self, config, tree, pass_file_object=None):
+    def __init__(self, config, tree, pass_file_object=None, no_git_override=False):
         QGroupBox.__init__(self)
+        self.no_git_override = no_git_override
         self.setLayout(QGridLayout())
         welcome_message = QTextBrowser()
         welcome_message.setText('Leeloo Dallas - Multipass!')
@@ -54,16 +57,18 @@ class PasswordView(QGroupBox):
         copy_password_button = QPushButton('&Copy')
         copy_password_button.setShortcut('Ctrl+c')
         copy_password_button.clicked.connect(self.copy_password)
-        edit_password_button = QPushButton('&Edit')
-        edit_password_button.setShortcut('Ctrl+e')
-        edit_password_button.clicked.connect(self.edit_password)
+        if not self.no_git_override:
+            edit_password_button = QPushButton('&Edit')
+            edit_password_button.setShortcut('Ctrl+e')
+            edit_password_button.clicked.connect(self.edit_password)
         view_password_button = QPushButton('&Toggle')
         view_password_button.setShortcut('Ctrl+t')
         view_password_button.clicked.connect(self.toggle_password_visibility)
         self.layout().addWidget(password_field_label, 0, 0)
         self.layout().addWidget(self.password_field, 0, 1)
         self.layout().addWidget(copy_password_button, 1, 2)
-        self.layout().addWidget(edit_password_button, 0, 2)
+        if not self.no_git_override:
+            self.layout().addWidget(edit_password_button, 0, 2)
         self.layout().addWidget(view_password_button, 1, 1)
         self.password_field.setText(self.pass_file.password)
         for key, value in self.pass_file.attributes:
@@ -84,6 +89,9 @@ class PasswordView(QGroupBox):
         """
         Displays an edit password dialog.
         """
+        if self.no_git_override:
+            raise NoGitOverrideHack('no password editing in read only mode')
+
         logger = logging.getLogger(__name__)
         old_name = self.pass_file.name
         logger.debug('edit_password: old_name: "%s"', old_name)

@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
 
         self.password_store_root = password_store_root
         self.config = get_config(password_store_root)
+        self.no_git_override = False
         try:
             self.get_user_key()
             logger.info('trying to open password store')
@@ -55,7 +56,9 @@ class MainWindow(QMainWindow):
             logger.info('creating new password store')
             self.create_password_store(password_store_root)
         except GitError as error:
-            self.show_error(error.__repr__())
+            self.no_git_override = True
+            logger.debug(error)
+            self.show_error('GitError: Switching to ReadOnly Offline Mode')
             self.tree = PassUiFileSystemTree(password_store_root, self.config,
                                              no_git_override=True)
         import_gpg_keys(password_store_root)
@@ -66,20 +69,21 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         self.menuBar().addAction(exit_action)
 
-        add_folder_action = QAction('Add &Folder', self)
-        add_folder_action.setShortcut('Ctrl+f')
-        add_folder_action.triggered.connect(self.add_folder)
-        self.menuBar().addAction(add_folder_action)
+        if not self.no_git_override:
+            add_folder_action = QAction('Add &Folder', self)
+            add_folder_action.setShortcut('Ctrl+f')
+            add_folder_action.triggered.connect(self.add_folder)
+            self.menuBar().addAction(add_folder_action)
 
-        add_pass_action = QAction('Add &Password', self)
-        add_pass_action.setShortcut('Ctrl+p')
-        add_pass_action.triggered.connect(self.add_password)
-        self.menuBar().addAction(add_pass_action)
+            add_pass_action = QAction('Add &Password', self)
+            add_pass_action.setShortcut('Ctrl+p')
+            add_pass_action.triggered.connect(self.add_password)
+            self.menuBar().addAction(add_pass_action)
 
-        refresh_action = QAction('&Refresh', self)
-        refresh_action.setShortcut('Ctrl+r')
-        refresh_action.triggered.connect(self.refresh_password_store)
-        self.menuBar().addAction(refresh_action)
+            refresh_action = QAction('&Refresh', self)
+            refresh_action.setShortcut('Ctrl+r')
+            refresh_action.triggered.connect(self.refresh_password_store)
+            self.menuBar().addAction(refresh_action)
 
 
         self.content_frame = QSplitter()
@@ -91,18 +95,20 @@ class MainWindow(QMainWindow):
         self.right_content_frame.setLayout(QStackedLayout())
         self.content_frame.addWidget(self.right_content_frame)
 
-        self.password_browser_group = PasswordView(config=self.config, tree=self.tree)
+        self.password_browser_group = PasswordView(config=self.config, tree=self.tree,
+                                                   no_git_override=self.no_git_override)
         self.right_content_frame.layout().addWidget(self.password_browser_group)
 
         self.tree.itemSelectionChanged.connect(self.tree.on_item_selection_changed)
 
         self.user_list_group = QGroupBox('Authorized Keys')
         self.user_list_group.setLayout(QVBoxLayout())
-        self.user_list = RecipientList()
+        self.user_list = RecipientList(no_git_override=self.no_git_override)
         self.user_list_group.layout().addWidget(self.user_list)
-        self.user_list_save_button = QPushButton('save')
-        self.user_list_save_button.clicked.connect(self.reencrypt_files)
-        self.user_list_group.layout().addWidget(self.user_list_save_button)
+        if not self.no_git_override:
+            self.user_list_save_button = QPushButton('save')
+            self.user_list_save_button.clicked.connect(self.reencrypt_files)
+            self.user_list_group.layout().addWidget(self.user_list_save_button)
         self.right_content_frame.layout().addWidget(self.user_list_group)
 
         self.right_content_frame.empty_frame = QFrame()

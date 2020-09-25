@@ -34,8 +34,10 @@ class RecipientList(QListWidget):
     """
     provides a list widget containing identifiers of gpg keys
     """
-    def __init__(self):
+    def __init__(self, no_git_override=False):
         QListWidget.__init__(self)
+        self.no_git_override = no_git_override
+        self.setDisabled(self.no_git_override)
 
     def _add_recipients(self, list_of_recipient_data):
         for name, checked, enabled in list_of_recipient_data:

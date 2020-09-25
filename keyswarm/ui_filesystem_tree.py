@@ -14,6 +14,7 @@ from PySide2.QtCore import Qt
 from .git_handler import GitError
 from .pass_file_system import PassFileSystem
 
+
 class PassUIFileSystemItem(QTreeWidgetItem):
     """
     A Node in the Pass tree
@@ -56,6 +57,7 @@ class PassUiFileSystemTree(QTreeWidget):
         QTreeWidget.__init__(self)
         self.root = str(root)
         self.config = config
+        self.no_git_override = no_git_override
         self.file_system = file_system or PassFileSystem(root, config=config,
                                                          no_git_override=no_git_override)
         self.setHeaderLabel('PasswordStore')
@@ -80,7 +82,8 @@ class PassUiFileSystemTree(QTreeWidget):
         if not node:
             logger.info('refresh_tree')
             root_node = True
-            self.file_system.refresh_password_store()
+            if not self.no_git_override:
+                self.file_system.refresh_password_store()
             node = PassUIFileSystemItem(self.root, '')
             self.invisibleRootItem().takeChildren()
             self.addTopLevelItem(node)
@@ -184,6 +187,8 @@ class PassUiFileSystemTree(QTreeWidget):
         """
         Qt drop event handler
         """
+        if self.no_git_override:
+            return
         logger = logging.getLogger(__name__)
         logger.debug('PassUiFileSystemTree: dropEvent: event.pos(): %r', event.pos())
         logger.debug('PassUiFileSystemTree: dropEvent: event.source(): %r', event.source())
