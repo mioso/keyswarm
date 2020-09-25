@@ -51,7 +51,8 @@ class PasswordSearch:
         schema = PasswordSearch.__create_schema()
         self.__index = self.__storage.create_index(schema)
 
-        writer = self.__index.writer()
+        attributes = set()
+        documents = []
         node = file_system_tree.topLevelItem(0)
         child_index = 0
         child_count = node.childCount()
@@ -87,11 +88,28 @@ class PasswordSearch:
                         if not isinstance(pass_file, PassFile):
                             raise ValueError('file in tree is not a PassFile')
                         path = '/'.join(list(map(lambda a: a[0].name, stack)))
-                        writer.add_document(name=pass_file.name,
-                                            path=path,
-                                            comments=pass_file.comments)
+                        document = {
+                            'name': pass_file.name,
+                            'path': path,
+                            'comments': pass_file.comments
+                            }
+                        for attribute in pass_file.attributes:
+                            try:
+                                key, value = attribute
+                                if key not in ['name', 'path', 'comments']:
+                                    attributes.add(key)
+                                    document[key] = value
+                            except ValueError:
+                                pass
+                        documents.append(document)
                     except ValueError as error:
                         logger.debug('create_search_index: %r', error)
+        logger.debug('__create_search_index: attributes: %r', attributes)
+        writer = self.__index.writer()
+        for attribute in attributes:
+            writer.add_field(attribute, TEXT)
+        for document in documents:
+            writer.add_document(**document)
         writer.commit()
         with self.__index.searcher() as searcher:
             logger.debug('create_search_index: %r', list(searcher.all_stored_fields()))
