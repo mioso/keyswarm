@@ -99,7 +99,8 @@ class PasswordSearch:
                             try:
                                 key, value = attribute
                                 logger.debug('__create_search_index: (key, value): (%r, %r)', key, value)
-                                if key not in ['name', 'path', 'comments']:
+                                if (key not in ['name', 'path', 'comments']
+                                    and ' ' not in key and '_' not in key):
                                     attributes.add(key)
                                     document[key] = value
                             except ValueError as error:
