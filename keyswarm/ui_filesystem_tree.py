@@ -134,7 +134,7 @@ class PassUiFileSystemTree(QTreeWidget):
                 node.addChild(child_node)
                 if child_node.isdir:
                     self.__refresh_tree(child_node)
-                    child_node.setExpanded(True)
+                    child_node.setExpanded(self.__config.get('ui', 'expand_tree', fallback=False))
         if root_node:
             self.sortItems(0, Qt.SortOrder(0))
             self.setCurrentItem(self.topLevelItem(0))
