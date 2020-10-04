@@ -85,6 +85,11 @@ class MainWindow(QMainWindow):
             refresh_action.triggered.connect(self.refresh_password_store)
             self.menuBar().addAction(refresh_action)
 
+            self.edit_toggle_action = QAction('Entitlement &mode', self)
+            self.edit_toggle_action.setShortcut('Ctrl+m')
+            self.edit_toggle_action.setCheckable(True)
+            self.edit_toggle_action.triggered.connect(self.toggle_entitlement_mode)
+            self.menuBar().addAction(self.edit_toggle_action)
 
         self.content_frame = QSplitter()
         self.content_frame.addWidget(self.tree)
@@ -104,9 +109,11 @@ class MainWindow(QMainWindow):
         self.user_list_group = QGroupBox('Authorized Keys')
         self.user_list_group.setLayout(QVBoxLayout())
         self.user_list = RecipientList(no_git_override=self.no_git_override)
+        self.user_list.setDisabled(True)
         self.user_list_group.layout().addWidget(self.user_list)
         if not self.no_git_override:
             self.user_list_save_button = QPushButton('save')
+            self.user_list_save_button.setDisabled(True)
             self.user_list_save_button.clicked.connect(self.reencrypt_files)
             self.user_list_group.layout().addWidget(self.user_list_save_button)
         self.right_content_frame.layout().addWidget(self.user_list_group)
@@ -186,6 +193,18 @@ class MainWindow(QMainWindow):
         dialog.layout().addWidget(frame)
         dialog.exec_()
         sys_exit(exit_value)
+
+    def toggle_entitlement_mode(self):
+        logger = logging.getLogger(__name__)
+        if self.user_list.isEnabled():
+            self.user_list.setDisabled(True)
+            self.user_list_save_button.setDisabled(True)
+            self.edit_toggle_action.setText('Entitlement &mode')
+        else:
+            self.user_list.setDisabled(False)
+            self.user_list_save_button.setDisabled(False)
+            self.edit_toggle_action.setText('Normal &mode')
+        logger.info('toggled entitlement mode to %r', self.user_list.isEnabled())
 
     def create_password_store(self, password_store_root):
         """
@@ -421,7 +440,6 @@ class MainWindow(QMainWindow):
                 self.create_new_search_index()
                 self.tree.select_item(path_to_folder=password_dir,
                                       name=pass_dialog.password_name_input.text())
-
 
     def refresh_password_store(self):
         """
