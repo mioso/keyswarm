@@ -10,6 +10,7 @@ from pathlib import PurePath
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem, QMainWindow
 from PySide2.QtCore import Qt
+from PySide2.QtGui import QIcon
 
 from .git_handler import GitError
 from .pass_file_system import PassFileSystem
@@ -97,6 +98,9 @@ class PassUiFileSystemTree(QTreeWidget):
                 if child_node.isdir:
                     self.refresh_tree(child_node)
                     child_node.setExpanded(self.config.get('ui', 'expand_tree', fallback=False))
+                    child_node.setIcon(0, QIcon('png/folder-key-outline.png'))
+                else:
+                    child_node.setIcon(0, QIcon('png/file-key-outline.png'))
         if root_node:
             self.sortItems(0, Qt.SortOrder(0))
             window = self.window()
