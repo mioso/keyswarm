@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="png">
+        <file alias="file-key-outline.png">png/file-key-outline.png</file>
+        <file alias="folder-key-outline.png">png/folder-key-outline.png</file>
+    </qresource>
+</RCC>
