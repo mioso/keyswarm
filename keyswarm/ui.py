@@ -15,6 +15,7 @@ from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, Q
                                QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
                                QButtonGroup, QRadioButton, QFormLayout)
 from PySide2.QtGui import QIcon
+import keyswarm.resources
 
 from .config import get_config, save_config, get_user_config
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
@@ -84,7 +85,6 @@ class MainWindow(QMainWindow):
             refresh_action.setShortcut('Ctrl+r')
             refresh_action.triggered.connect(self.refresh_password_store)
             self.menuBar().addAction(refresh_action)
-
 
         self.content_frame = QSplitter()
         self.content_frame.addWidget(self.tree)
@@ -422,7 +422,6 @@ class MainWindow(QMainWindow):
                 self.tree.select_item(path_to_folder=password_dir,
                                       name=pass_dialog.password_name_input.text())
 
-
     def refresh_password_store(self):
         """
         Refreshes the password store and reloads it.
@@ -563,6 +562,7 @@ def main():
     app = QApplication()
     window = MainWindow(password_store_root)
     window.setWindowTitle('Keyswarm')
+    window.setWindowIcon(QIcon(':/png/key-chain-variant.png'))
     window.resize(800, 600)
     window.show()
     app.exec_()

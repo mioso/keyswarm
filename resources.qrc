@@ -3,5 +3,6 @@
     <qresource prefix="png">
         <file alias="file-key-outline.png">png/file-key-outline.png</file>
         <file alias="folder-key-outline.png">png/folder-key-outline.png</file>
+        <file alias="app_icon.png">png/key-chain-variant.png</file>
     </qresource>
 </RCC>
