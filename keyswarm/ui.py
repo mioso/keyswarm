@@ -15,6 +15,7 @@ from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, Q
                                QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
                                QButtonGroup, QRadioButton, QFormLayout)
 from PySide2.QtGui import QIcon
+import keyswarm.resources
 
 from .config import get_config, save_config, get_user_config
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys)
@@ -581,6 +582,7 @@ def main():
     app = QApplication()
     window = MainWindow(password_store_root)
     window.setWindowTitle('Keyswarm')
+    window.setWindowIcon(QIcon(':/png/app_icon.png'))
     window.resize(800, 600)
     window.show()
     app.exec_()
