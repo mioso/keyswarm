@@ -562,7 +562,7 @@ def main():
     app = QApplication()
     window = MainWindow(password_store_root)
     window.setWindowTitle('Keyswarm')
-    window.setWindowIcon(QIcon(':/png/key-chain-variant.png'))
+    window.setWindowIcon(QIcon(':/png/app_icon.png'))
     window.resize(800, 600)
     window.show()
     app.exec_()
