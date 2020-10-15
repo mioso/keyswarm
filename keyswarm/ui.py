@@ -14,7 +14,7 @@ from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, Q
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
                                QGridLayout, QLabel, QSplitter, QStackedLayout, QListWidget,
                                QButtonGroup, QRadioButton, QFormLayout)
-from PySide2.QtGui import QIcon
+from PySide2.QtGui import QIcon, QPalette, QColor, Qt
 import keyswarm.resources
 
 from .config import get_config, save_config, get_user_config
@@ -86,6 +86,12 @@ class MainWindow(QMainWindow):
             refresh_action.triggered.connect(self.refresh_password_store)
             self.menuBar().addAction(refresh_action)
 
+        configure_action = QAction('Confi&gure', self)
+        configure_action.setShortcut('Ctrl+g')
+        configure_action.triggered.connect(self.configure)
+        self.menuBar().addAction(configure_action)
+
+        if not self.no_git_override:
             self.edit_toggle_action = QAction('Entitlement &mode', self)
             self.edit_toggle_action.setShortcut('Ctrl+m')
             self.edit_toggle_action.setCheckable(True)
@@ -360,6 +366,59 @@ class MainWindow(QMainWindow):
         logging.getLogger(__name__).info('create_new_search_index')
         self.searcher = PasswordSearch(file_system_tree=self.tree)
 
+    def configure(self):
+        """
+        displays the main configuration dialog
+        :return: None
+        """
+        logger = logging.getLogger(__name__)
+
+        configuration_dialog = QDialog()
+        configuration_dialog.setWindowTitle('Keyswarm configuration')
+        configuration_dialog.setMinimumWidth(450)
+        configuration_layout = QVBoxLayout()
+        configuration_key_value_grid = QGridLayout()
+        configuration_layout.addLayout(configuration_key_value_grid)
+        configuration_dialog.setLayout(configuration_layout)
+        value_inputs = {}
+        for section in self.config.sections():
+            section_header = QLabel(section)
+            section_header.setStyleSheet('font-weight: bold; text-transform:uppercase;')
+            configuration_key_value_grid.addWidget(section_header,
+                                                   configuration_key_value_grid.rowCount(),
+                                                   0)
+            value_inputs[section] = {}
+            for attrib in self.config[section]:
+                configuration_key_value_grid.addWidget(QLabel(attrib),
+                                                       configuration_key_value_grid.rowCount(),
+                                                       0)
+                value_input = QLineEdit()
+                value_input.setText(self.config[section][attrib])
+                value_inputs[section][attrib] = value_input
+                configuration_key_value_grid.addWidget(value_inputs[section][attrib],
+                                                       configuration_key_value_grid.rowCount() - 1,
+                                                       1)
+        button_layout = QGridLayout()
+        confirm_button = QPushButton()
+        confirm_button.setShortcut('Return')
+        confirm_button.setIcon(QIcon.fromTheme('document-save'))
+        confirm_button.setText('Save')
+        confirm_button.clicked.connect(configuration_dialog.accept)
+        button_layout.addWidget(confirm_button, 0, 1)
+        abort_button = QPushButton()
+        abort_button.setShortcut('Escape')
+        abort_button.setIcon(QIcon.fromTheme('window-close'))
+        abort_button.setText('Close')
+        abort_button.clicked.connect(configuration_dialog.close)
+        button_layout.addWidget(abort_button, 0, 0)
+        configuration_layout.addLayout(button_layout)
+
+        if configuration_dialog.exec_():
+            for section in value_inputs:
+                for attrib in value_inputs[section]:
+                    self.config[section][attrib] = value_inputs[section][attrib].text()
+            save_config(self.config)
+
     def add_folder(self):
         """
         Adds a sub folder to the current folder.
@@ -575,11 +634,32 @@ def main():
         logging.basicConfig(level=logging.INFO)
 
     try:
-        password_store_root = user_config['general']['password_store_root']
+        password_store_root = user_config['main']['password_store']
     except KeyError:
         password_store_root = Path('~/.password-store').expanduser()
 
     app = QApplication()
+
+    app.setStyle('Fusion')
+    palette = QPalette()
+    try:
+        if str(user_config['main']['darkmode']).lower() == 'true':
+            palette.setColor(QPalette.Window, QColor(53, 53, 53))
+            palette.setColor(QPalette.WindowText, Qt.white)
+            palette.setColor(QPalette.Base, QColor(25, 25, 25))
+            palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
+            palette.setColor(QPalette.ToolTipBase, Qt.black)
+            palette.setColor(QPalette.ToolTipText, Qt.white)
+            palette.setColor(QPalette.Text, Qt.white)
+            palette.setColor(QPalette.Button, QColor(53, 53, 53))
+            palette.setColor(QPalette.ButtonText, Qt.white)
+            palette.setColor(QPalette.BrightText, Qt.red)
+            palette.setColor(QPalette.Link, QColor(42, 130, 218))
+            palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+            palette.setColor(QPalette.HighlightedText, Qt.black)
+            app.setPalette(palette)
+    except KeyError:
+        pass
     window = MainWindow(password_store_root)
     window.setWindowTitle('Keyswarm')
     window.setWindowIcon(QIcon(':/png/app_icon.png'))
