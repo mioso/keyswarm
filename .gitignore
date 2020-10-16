@@ -9,3 +9,4 @@ multipass/__pycache__/*.pyc
 .*.swo
 build/*
 dist/*
+keyswarm/resources.py
