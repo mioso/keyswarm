@@ -11,8 +11,8 @@ from logging.handlers import SocketHandler
 from ipaddress import ip_address
 from os import path
 from pathlib import Path
-import re
 from sys import argv, exit as sys_exit
+import threading
 
 # pylint: disable=no-name-in-module
 from PySide2.QtCore import QTimer
@@ -20,10 +20,11 @@ from PySide2.QtWidgets import (QMainWindow, QApplication, QFrame, QHBoxLayout, Q
                                QDialog, QLineEdit, QPushButton, QVBoxLayout, QGroupBox,
                                QGridLayout, QLabel, QSplitter, QStackedWidget, QListWidget,
                                QButtonGroup, QRadioButton, QFormLayout)
-from PySide2.QtGui import QIcon
+from PySide2.QtGui import QIcon, QPalette, QColor, Qt
 # pylint: enable=no-name-in-module
 
 from .config import get_config, save_config, get_user_config
+from ._debug import create_test_task
 from .decoder import enable_decoder_debug_logging
 from .gpg_handler import (write_gpg_id_file, generate_keypair, import_gpg_keys, list_available_keys,
                           enable_gpg_debug_logging)
@@ -40,6 +41,8 @@ from .ui_recipients import RecipientList, enable_recipient_view_debug_logging
 from .search import PasswordSearch, enable_search_debug_logging
 from .task_queue import TaskQueue, Task, TaskPriority, enable_task_queue_debug_logging
 from .types import RightFrameContentType
+
+from .fail_always import Fail
 
 
 class MainWindow(QMainWindow):
@@ -95,21 +98,24 @@ class MainWindow(QMainWindow):
         self.__config = get_config(self._password_store_root)
 
     def _init_password_store(self):
+        def task_():
+            return
+
         def callback_(task):
-            self._tree.connect_to_file_system(task.result)
+            self._tree.connect_to_file_system(self._init_password_store_())
             import_gpg_keys(self._password_store_root)
             self.create_new_search_index()
 
         task = Task(
-            self._init_password_store_,
-            'Initialising password store',
+            task_,
+            'starting',
             TaskPriority.INIT_PASSWORD_STORE,
             callback=callback_
             )
 
         self.queue_task(task)
 
-    def _init_password_store_(self):
+    def _init_password_store_(self): # TODO FIXME
         logger = logging.getLogger(__name__)
         try:
             self.get_user_key()
@@ -120,7 +126,7 @@ class MainWindow(QMainWindow):
                 no_git_override=False)
         except FileNotFoundError:
             logger.info('creating new password store')
-            self.create_password_store(self._password_store_root)
+            return self.create_password_store(self._password_store_root)
         except GitError as error:
             self.show_error(error.__repr__())
             return PassFileSystem(
@@ -129,9 +135,9 @@ class MainWindow(QMainWindow):
                 no_git_override=True)
 
     def _init_debug(self):
-        if self.__config.getboolean('debug', 'enabled', fallback=False):
+        if self.__config.getboolean('debug', 'task_queue', fallback=False):
             test_task_action = QAction('Test Task', self)
-            test_task_action.triggered.connect(self.__create_test_task)
+            test_task_action.triggered.connect(partial(create_test_task, self))
             self.menuBar().addAction(test_task_action)
 
     def _init_content_frame(self):
@@ -176,7 +182,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._main_frame)
 
     def _init_action_bar(self):
-        exit_action = QAction('Exit', self)
+        exit_action = QAction('E&xit', self)
         exit_action.setShortcut('Ctrl+q')
         exit_action.triggered.connect(self.close)
         self.menuBar().addAction(exit_action)
@@ -283,7 +289,7 @@ class MainWindow(QMainWindow):
         else:
             # this does happen one task handling cylcle later than is could
             message = 'ready'
-            self.setDisabled(False)
+            #self.setDisabled(False)
 
         self._status_bar.showMessage(message)
 
@@ -321,30 +327,8 @@ class MainWindow(QMainWindow):
         logger = logging.getLogger(__name__)
         logger.debug('queue_task: (%r)', task)
         #TODO implement task abortion to keep ui enabled
-        self.setDisabled(True)
+        #self.setDisabled(True)
         self.__task_queue.push(task)
-
-    def __create_test_task(self):
-        # TODO remove this method
-        from random import choice # pylint: disable=import-outside-toplevel
-        from time import sleep # pylint: disable=import-outside-toplevel
-        def fib(n): # pylint: disable=invalid-name
-            """ using inefficient implementation on purpose """
-            if n <= 1:
-                return n
-            return fib(n-1) + fib(n-2)
-
-        def callback_(task):
-            self.show_error(str(task.result))
-
-        test_task = Task(
-            partial(choice([fib, sleep]), choice([23, 32, 42])),
-            f'Test Task: {choice(range(2**32))}',
-            choice(list(TaskPriority)),
-            callback=callback_
-            )
-
-        self.queue_task(test_task)
 
     def create_password_store(self, password_store_root):
         """
@@ -352,6 +336,9 @@ class MainWindow(QMainWindow):
         Future version will ask the user if they want to clone a git repository instead.
         :param password_store_root: PathLike path of the root directory to create
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.create_password_store')
+
         logger = logging.getLogger(__name__)
         logger.info('create_password_store: password_store_root: %r', password_store_root)
 
@@ -406,6 +393,9 @@ class MainWindow(QMainWindow):
         Retrieve the identifier of the users private gpg key.
         Asks the user which key to select if gpg reports multiple private keys.
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.get_user_key')
+
         logger = logging.getLogger(__name__)
         list_of_private_keys = list_available_keys(get_secret_keys=True)
         logger.debug('get_user_key: list_of_private_keys: %r', list_of_private_keys)
@@ -440,6 +430,9 @@ class MainWindow(QMainWindow):
         """
         search for the raw query written in the search bar and display possible results
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.search')
+
         # TODO decide wether this should be considered blocking for the UI
         logger = logging.getLogger(__name__)
         if not self._searcher:
@@ -475,8 +468,12 @@ class MainWindow(QMainWindow):
         """
         clears the search bar and hides the result widget
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.clear_search')
+
         logger = logging.getLogger(__name__)
         logger.info('clear_search')
+
         self._tool_bar.search_bar.setText('')
         self._tool_bar.search_results.clear()
         self._tool_bar.search_results.hide()
@@ -494,6 +491,9 @@ class MainWindow(QMainWindow):
         """
         create a new search index from the password tree
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.create_new_search_index')
+
         logger = logging.getLogger(__name__)
         logger.info('create_new_search_index')
 
@@ -536,6 +536,9 @@ class MainWindow(QMainWindow):
         Adds a sub folder to the current folder.
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.add_folder')
+
         logger = logging.getLogger(__name__)
 
         folder_dialog = QDialog()
@@ -577,6 +580,9 @@ class MainWindow(QMainWindow):
         Displays an add password dialog.
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.add_password')
+
         logger = logging.getLogger(__name__)
 
         optional_fields = []
@@ -611,12 +617,15 @@ class MainWindow(QMainWindow):
                 self._tree.refresh_tree()
                 self.create_new_search_index()
                 self._tree.select_item(path_to_folder=password_dir,
-                                      name=pass_dialog.password_name_input.text())
+                                       name=pass_dialog.password_name_input.text())
 
     def refresh_password_store(self):
         """
         Refreshes the password store and reloads it.
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.refresh_password_store')
+
         #TODO rework password tree to use QFileSystemModel to see if refresh_tree can be dropped
         logger = logging.getLogger(__name__)
         logger.info('refresh_password_store')
@@ -627,6 +636,9 @@ class MainWindow(QMainWindow):
         """
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.reencrypt_files')
+
         logger = logging.getLogger(__name__)
 
         list_of_keys = self._user_list.get_checked_item_names()
@@ -659,6 +671,9 @@ class MainWindow(QMainWindow):
         display an error message to the user inside the main window
         :param error_message: string displayed to the user
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.show_error')
+
         logger = logging.getLogger(__name__)
         logger.debug('show_error: %r', error_message)
         error_widget = QFrame()
@@ -692,8 +707,12 @@ class MainWindow(QMainWindow):
         :param content_type: RightFrameContentType type of the content to show
         :param value: return value of PassFileSystem.handle
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('MainWindow.show_right_frame_content')
+
         if content_type == RightFrameContentType.EMPTY:
-            self._right_content_frame.layout().setCurrentWidget(self._right_conent_frame.empty)
+            self._right_content_frame.layout().setCurrentWidget(
+                self._right_content_frame.empty_frame)
         elif content_type == RightFrameContentType.PASSWORD_VIEW:
             self._right_content_frame.layout().setCurrentWidget(self._password_browser_group)
             self._password_browser_group.load_pass_file(value)
@@ -711,6 +730,9 @@ def generate_key_dialog():
     :return: string id of the generated key
     :throws ValueError: on gpg error (also when the user aborts the passphrase dialog)
     """
+    if threading.main_thread() != threading.current_thread():
+        raise Fail('ui.generate_key_dialog')
+
     logger = logging.getLogger(__name__)
     dialog = QDialog()
     dialog.setWindowTitle('Create GPG Key')
@@ -734,31 +756,28 @@ def generate_key_dialog():
 
 
 def __setup_debugging(user_config):
-    try:
-        log_level = {
-            'debug': logging.DEBUG,
-            'info': logging.INFO,
-            'warn': logging.WARN,
-            'warning': logging.WARNING,
-            'error': logging.ERROR,
-            'fatal': logging.FATAL,
-            'critical': logging.CRITICAL
-        }[user_config.get('logging', 'log_level', fallback='info')]
-    except KeyError:
-        log_level = logging.INFO
+    log_level = {
+        'debug': logging.DEBUG,
+        'info': logging.INFO,
+        'warn': logging.WARN,
+        'warning': logging.WARNING,
+        'error': logging.ERROR,
+        'fatal': logging.FATAL,
+        'critical': logging.CRITICAL
+    }.get(user_config.get('logging', 'log_level', fallback='info'), logging.INFO)
 
     config_flag_actions = [
-        ('logging', 'debug_git', enable_git_debug_logging),
-        ('logging', 'debug_gpg', enable_gpg_debug_logging),
-        ('logging', 'debug_search', enable_search_debug_logging),
-        ('logging', 'debug_file_format', enable_file_format_debug_logging),
-        ('logging', 'debug_file_system', enable_file_system_debug_logging),
-        ('logging', 'debug_tree_view', enable_tree_view_debug_logging),
-        ('logging', 'debug_recipient_view', enable_recipient_view_debug_logging),
-        ('logging', 'debug_password_view', enable_password_view_debug_logging),
-        ('logging', 'debug_password_dialog', enable_password_dialog_debug_logging),
-        ('logging', 'debug_task_queue', enable_task_queue_debug_logging),
-        ('logging', 'debug_decoder', enable_decoder_debug_logging),
+        ('debug', 'git', enable_git_debug_logging),
+        ('debug', 'gpg', enable_gpg_debug_logging),
+        ('debug', 'search', enable_search_debug_logging),
+        ('debug', 'file_format', enable_file_format_debug_logging),
+        ('debug', 'file_system', enable_file_system_debug_logging),
+        ('debug', 'tree_view', enable_tree_view_debug_logging),
+        ('debug', 'recipient_view', enable_recipient_view_debug_logging),
+        ('debug', 'password_view', enable_password_view_debug_logging),
+        ('debug', 'password_dialog', enable_password_dialog_debug_logging),
+        ('debug', 'task_queue', enable_task_queue_debug_logging),
+        ('debug', 'decoder', enable_decoder_debug_logging),
         ]
 
     for section, key, action in config_flag_actions:
@@ -772,14 +791,45 @@ def __setup_debugging(user_config):
     file_mode = user_config.get('logging', 'file_mode', fallback='w') if file_name else None
     log_handler = user_config.get('logging', 'log_handler', fallback=None)
 
-    address, port = log_handler.split(' ')
-    address = ip_address(address)
-    log_handler = SocketHandler(str(address), port)
-
     if log_handler:
+        address, port = log_handler.split(' ')
+        address = ip_address(address)
+        log_handler = SocketHandler(str(address), port)
+
         logging.basicConfig(level=log_level, handlers=[log_handler])
     else:
         logging.basicConfig(level=log_level, filename=file_name, filemode=file_mode)
+
+
+def apply_dark_mode(app):
+    app.setStyle('Fusion')
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(53, 53, 53))
+    palette.setColor(QPalette.WindowText, Qt.white)
+    palette.setColor(QPalette.Disabled, QPalette.WindowText, QColor(127, 127, 127))
+    palette.setColor(QPalette.Base, QColor(42, 42, 42))
+    palette.setColor(QPalette.AlternateBase, QColor(66, 66, 66))
+    palette.setColor(QPalette.ToolTipBase, Qt.white)
+    palette.setColor(QPalette.ToolTipText, Qt.white)
+    palette.setColor(QPalette.Text, Qt.white)
+    palette.setColor(QPalette.Disabled, QPalette.Text, QColor(127, 127, 127))
+    palette.setColor(QPalette.Dark, QColor(35, 35, 35))
+    palette.setColor(QPalette.Shadow, QColor(20, 20, 20))
+    palette.setColor(QPalette.Button, QColor(53, 53, 53))
+    palette.setColor(QPalette.ButtonText, Qt.white)
+    palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(127, 127, 127))
+    palette.setColor(QPalette.BrightText, Qt.red)
+    palette.setColor(QPalette.Link, QColor(42, 130, 218))
+    palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+    palette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(80, 80, 80))
+    palette.setColor(QPalette.HighlightedText, Qt.white)
+    palette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor(127, 127, 127))
+    app.setPalette(palette)
+
+
+def apply_app_settings(user_config, app):
+    if user_config.get('ui', 'dark_mode', fallback=False):
+        apply_dark_mode(app)
 
 
 def main():
@@ -796,6 +846,7 @@ def main():
         password_store_root = Path('~/.password-store').expanduser()
 
     app = QApplication(argv)
+    apply_app_settings(user_config, app)
     window = MainWindow(password_store_root)
     window.setWindowTitle('Keyswarm')
     window.resize(800, 600)

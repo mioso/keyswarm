@@ -39,6 +39,9 @@ class PasswordSearch:
         self.__index = None
         self.__create_search_index(file_system_tree)
 
+    def __repr__(self):
+        return f'PasswordSearch(doc_count={self.__index.doc_count()})'
+
     @staticmethod
     def __create_schema():
         return Schema(name=TEXT(stored=True), path=TEXT(stored=True), comments=TEXT(stored=True))
@@ -150,6 +153,7 @@ class PasswordSearch:
         :param return: [dict]
         """
         logger = logging.getLogger(__name__)
+        logger.debug('search: self: %r', self)
         logger.debug('search: raw_query: %r %r %r %r', raw_query, glob_prefix, glob_suffix, fuzzy)
         if (glob_prefix or glob_suffix) and fuzzy:
             logger.warning('search: auto-glob and auto-fuzzy are mutually exclusive')

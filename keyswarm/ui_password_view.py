@@ -4,6 +4,7 @@ and their metadata and to copy the password to clipboard
 """
 
 import logging
+import threading
 
 # pylint: disable=no-name-in-module
 from PySide2.QtGui import QFontDatabase
@@ -13,6 +14,8 @@ from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridL
 from .git_handler import GitError
 from .pass_clipboard import copy
 from .ui_password_dialog import PasswordDialog
+
+from .fail_always import Fail
 
 
 logging.getLogger(__name__).setLevel(logging.INFO)
@@ -26,6 +29,10 @@ class PasswordView(QGroupBox):
     """
     def __init__(self, config, tree, pass_file_object=None):
         QGroupBox.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.__init__')
+
         self.setLayout(QGridLayout())
         welcome_message = QTextBrowser()
         welcome_message.setText('Leeloo Dallas - Multipass!')
@@ -48,6 +55,9 @@ class PasswordView(QGroupBox):
         :param pass_file_object: a PassFile
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.load_pass_file')
+
         self.clear()
         if not pass_file_object:
             return
@@ -90,6 +100,9 @@ class PasswordView(QGroupBox):
         """
         Displays an edit password dialog.
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.edit_password')
+
         logger = logging.getLogger(__name__)
         old_name = self.pass_file.name
         logger.debug('edit_password: old_name: "%s"', old_name)
@@ -123,6 +136,9 @@ class PasswordView(QGroupBox):
         """
         toggle the visibility of the password field
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.toggle_password_visibility')
+
         if self.password_field.echoMode() == QLineEdit.EchoMode.Password:
             self.password_field.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
@@ -133,6 +149,9 @@ class PasswordView(QGroupBox):
         deletes all widgets from the PasswordView
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.clear')
+
         self.pass_file = None
         self.password_field = None
         for i in reversed(range(self.layout().count())):

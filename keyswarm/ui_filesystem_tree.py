@@ -7,6 +7,7 @@ from functools import partial
 import logging
 from os import path, listdir
 from pathlib import PurePath
+import threading
 
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
@@ -17,6 +18,8 @@ from .git_handler import GitError
 from .pass_file_format_parser import PassFile
 from .task_queue import Task, TaskPriority
 from .types import RightFrameContentType
+
+from .fail_always import Fail
 
 
 logging.getLogger(__name__).setLevel(logging.INFO)
@@ -31,6 +34,10 @@ class PassUIFileSystemItem(QTreeWidgetItem):
 
     def __init__(self, file_system_path, name):
         QTreeWidgetItem.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUIFileSystemItem.__init__')
+
         self.file_system_path = file_system_path
         self.name = name
         self.isdir = path.isdir(path.join(file_system_path, name))
@@ -57,6 +64,15 @@ class PassUIFileSystemItem(QTreeWidgetItem):
     def __str__(self):
         return self.__repr__()
 
+    def __eq__(self, other):
+        try:
+            return self.file_system_path == other.file_system_path and self.name == other.name
+        except AttributeError:
+            return NotImplemented
+
+    def __ne__(self, other):
+        return not self == other
+
 
 class PassUiFileSystemTree(QTreeWidget):
     """
@@ -64,10 +80,15 @@ class PassUiFileSystemTree(QTreeWidget):
     """
     def __init__(self, root, config, queue_functor):
         QTreeWidget.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUiFileSystemTree.__init__')
+
         self.__root = str(root)
         self.__config = config
         self.__queue_functor = queue_functor
         self.__file_system = None
+        self.__current_item = None
         self.setHeaderLabel('PasswordStore')
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -85,6 +106,9 @@ class PassUiFileSystemTree(QTreeWidget):
         return self.__file_system
 
     def connect_to_file_system(self, file_system):
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUiFileSystemTree.connect_to_file_system')
+
         self.__file_system = file_system
         self.refresh_tree()
 
@@ -93,6 +117,9 @@ class PassUiFileSystemTree(QTreeWidget):
         recursively refreshes PassUIFileSystem Tree to match its Filessystem representation.
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUiFileSystemTree.refresh_tree')
+
         logger = logging.getLogger(__name__)
 
         if not self.__file_system:
@@ -145,6 +172,9 @@ class PassUiFileSystemTree(QTreeWidget):
         :param path_to_folder: PathLike path to the folder containing the item
         :param name: string name of the item
         """
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUiFileSystemTree.select_item')
+
         logger = logging.getLogger(__name__)
         logger.debug('select_item: path_to_folder: %r', path_to_folder)
         logger.debug('select_item: name: %r', name)
@@ -193,8 +223,12 @@ class PassUiFileSystemTree(QTreeWidget):
         handles ui item selection changed events
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUiFileSystemTree.on_item_selection_changed')
+
         logger = logging.getLogger(__name__)
         item = self.currentItem()
+        self.__current_item = item
         if not item:
             logger.debug('on_item_selection_changed: no item')
             return
@@ -223,6 +257,8 @@ class PassUiFileSystemTree(QTreeWidget):
         def error_handler(task):
             if isinstance(task.exception, ValueError):
                 logger.debug(task.exception)
+            elif isinstance(task.exception, TimeoutError):
+                logger.debug('Selection Timeout')
             else:
                 logger.warning(task.exception)
             #TODO avoid self.window()
@@ -238,6 +274,8 @@ class PassUiFileSystemTree(QTreeWidget):
         self.__queue_functor(task)
 
     def _on_item_selection_changed(self, item):
+#        if item != self.__current_item:
+#            raise TimeoutError
         return self.__file_system.handle(item.file_system_path, item.name)
 
     # pylint: disable=invalid-name
@@ -245,6 +283,9 @@ class PassUiFileSystemTree(QTreeWidget):
         """
         Qt drop event handler
         """
+        if threading.main_thread() != threading.current_thread():
+            Fail('PassUiFileSystemTree.dropEvent')
+
         logger = logging.getLogger(__name__)
         logger.debug('PassUiFileSystemTree: dropEvent: event.pos(): %r', event.pos())
         logger.debug('PassUiFileSystemTree: dropEvent: event.source(): %r', event.source())

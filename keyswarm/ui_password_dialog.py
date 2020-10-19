@@ -5,6 +5,7 @@ this module provides a password creation/editing dialog and a password generatio
 import logging
 from os import path
 import string
+import threading
 
 # pylint: disable=no-name-in-module
 from PySide2.QtGui import QFontDatabase
@@ -18,6 +19,8 @@ from .name_filter import is_valid_file_name
 from .pass_file_format_parser import PassFile
 from .ui_helper import apply_error_style_to_widget, clear_widget_style_sheet
 
+from .fail_always import Fail
+
 
 logging.getLogger(__name__).setLevel(logging.INFO)
 def enable_password_dialog_debug_logging():
@@ -30,8 +33,13 @@ class PasswordGenerationDialog(QDialog):
     """
     def __init__(self):
         # pylint: disable=too-many-statements
-        fixed_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
         QDialog.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordGenerationDialog.__init__')
+
+        fixed_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+
         self.setMinimumWidth(480)
         self.setWindowTitle('Generate Password')
         self.setLayout(QVBoxLayout())
@@ -127,6 +135,9 @@ class PasswordGenerationDialog(QDialog):
         fill the password field with a password generated from random characters
         using the parameters set in the input fields in the random characters box
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordGenerationDialog.generate_random_characters')
+
         logger = logging.getLogger(__name__)
         length = self.random_characters.length_selector.value()
         logger.debug('PasswordGenerationDialog: generate_random_characters: length: %r', length)
@@ -148,6 +159,9 @@ class PasswordGenerationDialog(QDialog):
         fill the password field with a password generated from random words
         using the parameters set in the input fields in the random words box
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordGenerationDialog.generate_random_words')
+
         logger = logging.getLogger(__name__)
         dictionary_name = self.random_words.dictionary_selector.currentText()
         logger.debug('PasswordGenerationDialog: generate_random_words: dictionary: %r',
@@ -163,6 +177,9 @@ class PasswordGenerationDialog(QDialog):
         """
         toggles the visibility of the password input field
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordGenerationDialog.toggle_view')
+
         logger = logging.getLogger(__name__)
         logger.debug('PasswordGenerationDialog: toggle_view')
         if self.password_view.preview_line.echoMode() == QLineEdit.EchoMode.Password:
@@ -175,6 +192,9 @@ class PasswordGenerationDialog(QDialog):
         confirms the add password dialog
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordGenerationDialog.confirm')
+
         logger = logging.getLogger(__name__)
         if self.password_view.preview_line.text() == '':
             logger.debug('PasswordGenerationDialog.accept: empty password')
@@ -189,12 +209,16 @@ class PasswordDialog(QDialog):
     An add password Dialog
     """
     def __init__(self, optional_fields=None):
+        # Setup Dialog Window
+        QDialog.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordDialog.__init__')
+
         optional_fields = optional_fields or []
         logger = logging.getLogger(__name__)
         logger.debug('PasswordDialog: optional_fields: %r', optional_fields)
         fixed_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-        # Setup Dialog Window
-        QDialog.__init__(self)
         self.setMinimumHeight(360)
         self.setMinimumWidth(480)
         self.setWindowTitle('Create New Password')
@@ -250,6 +274,9 @@ class PasswordDialog(QDialog):
         """
         toggle the visibility of the password fields
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordDialog.oggle_password_visibility')
+
         if self.password_input.echoMode() == QLineEdit.EchoMode.Password:
             self.password_input.setEchoMode(QLineEdit.EchoMode.Normal)
             self.pass_confirm_input.setEchoMode(QLineEdit.EchoMode.Normal)
@@ -262,6 +289,9 @@ class PasswordDialog(QDialog):
         show the password generation dialog and apply the result to the
         password fields
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordDialog.generate_password')
+
         generate_dialog = PasswordGenerationDialog()
         if not generate_dialog.exec_():
             return
@@ -274,6 +304,9 @@ class PasswordDialog(QDialog):
         confirms the add password dialog
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordDialog.confirm')
+
         logger = logging.getLogger(__name__)
         clear_widget_style_sheet(self.password_name_input)
         clear_widget_style_sheet(self.password_input)
@@ -327,6 +360,9 @@ class PasswordDialog(QDialog):
 
         convienience function to create an edit password dialog
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordDialog.from_pass_file')
+
         logger = logging.getLogger(__name__)
         logger.debug('from_pass_file: pass_file: %r', pass_file)
         logger.debug('from_pass_file: config_attributes: %r', config_attributes)
