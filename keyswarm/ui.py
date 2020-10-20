@@ -157,15 +157,31 @@ class MainWindow(QMainWindow):
         self._user_list_group = QGroupBox('Authorized Keys')
         self._user_list_group.setLayout(QVBoxLayout())
         self._user_list = RecipientList()
+        self._user_list.setDisabled(True)
         self._user_list_group.layout().addWidget(self._user_list)
-        self._user_list_save_button = QPushButton('save')
-        self._user_list_save_button.clicked.connect(self.reencrypt_files)
+        self._user_list_save_button = QPushButton('edit')
+        self._user_list_save_button.clicked.connect(self._enable_recipients_save_button)
         self._user_list_group.layout().addWidget(self._user_list_save_button)
         self._right_content_frame.layout().addWidget(self._user_list_group)
-
         self._right_content_frame.empty_frame = QFrame()
         self._right_content_frame.layout().addWidget(self._right_content_frame.empty_frame)
         self._right_content_frame.layout().setCurrentWidget(self._right_content_frame.empty_frame)
+
+
+    def _enable_recipients_save_button(self):
+        self._user_list.setEnabled(True)
+        self._user_list_save_button.setText('save')
+        self._user_list_save_button.clicked.disconnect(self._enable_recipients_save_button)
+        self._user_list_save_button.clicked.connect(self._save_recipients)
+
+
+    def _save_recipients(self):
+        self.reencrypt_files()
+        self._user_list_save_button.setText('edit')
+        self._user_list_save_button.clicked.disconnect(self._save_recipients)
+        self._user_list_save_button.clicked.connect(self._enable_recipients_save_button)
+        self._user_list.setDisabled(True)
+
 
     def _init_task_timer(self):
         self.__task_timer = QTimer(self)
