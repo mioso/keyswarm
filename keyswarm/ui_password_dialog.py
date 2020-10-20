@@ -118,7 +118,7 @@ class PasswordGenerationDialog(QDialog):
         self.random_words.button_generate.clicked.connect(self.generate_random_words)
         self.random_words.layout().addWidget(self.random_words.button_generate)
 
-        self.tab_widget.addTab(self.random_words, 'Random Words')
+        #self.tab_widget.addTab(self.random_words, 'Random Words')
 
         bottom_row = QFrame()
         bottom_row.setLayout(QHBoxLayout())
