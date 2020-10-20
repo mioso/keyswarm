@@ -12,6 +12,7 @@ from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QTextEdit, QDialog, QLineEdit,
                                QPushButton, QVBoxLayout, QGridLayout, QLabel, QSpinBox,
                                QTabWidget, QComboBox)
+from PySide2.QtCore import Qt
 # pylint: enable=no-name-in-module
 
 from .generate_passwords import random_password
@@ -227,16 +228,22 @@ class PasswordDialog(QDialog):
 
         # Setup mandatory Labels and Inputs
         name_label = QLabel('Name:')
+        name_label.setAlignment(Qt.AlignTop)
+        name_label.setMargin(5)
         self.grid_layout.addWidget(name_label, 0, 0)
         self.password_name_input = QLineEdit()
         self.grid_layout.addWidget(self.password_name_input, 0, 1)
         pass_label = QLabel('Password:')
+        pass_label.setAlignment(Qt.AlignTop)
+        pass_label.setMargin(5)
         self.grid_layout.addWidget(pass_label, 1, 0)
         self.password_input = QLineEdit()
         self.password_input.setFont(fixed_font)
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.grid_layout.addWidget(self.password_input, 1, 1)
         pass_confirm_label = QLabel('Confirm:')
+        pass_confirm_label.setAlignment(Qt.AlignTop)
+        pass_confirm_label.setMargin(5)
         self.grid_layout.addWidget(pass_confirm_label, 2, 0)
         self.pass_confirm_input = QLineEdit()
         self.pass_confirm_input.setFont(fixed_font)
@@ -248,10 +255,12 @@ class PasswordDialog(QDialog):
         if optional_fields:
             for field, value, placeholder in optional_fields:
                 self.__add_optional_field__(field, value=value, placeholder=placeholder)
-        comment_label = QLabel('comments')
+        comment_label = QLabel('comments:')
+        comment_label.setAlignment(Qt.AlignTop)
+        comment_label.setMargin(5)
         self.comment_field = QTextEdit()
         self.layout().addWidget(comment_label, self.layout().rowCount() + 1, 0)
-        self.layout().addWidget(self.comment_field, self.layout().rowCount(), 1)
+        self.layout().addWidget(self.comment_field, self.layout().rowCount() - 1, 1)
 
         # Setup Buttons
         generate_password_button = QPushButton('&Generate')
@@ -264,7 +273,8 @@ class PasswordDialog(QDialog):
         self.layout().addWidget(view_password_button, 1, 2)
         self.confirm_button = QPushButton('&Accept')
         self.confirm_button.setShortcut('Enter')
-        self.grid_layout.addWidget(self.confirm_button, self.grid_layout.rowCount() + 1, 2)
+        self.grid_layout.addWidget(self.confirm_button, self.grid_layout.rowCount() - 1, 2)
+        self.grid_layout.setAlignment(self.confirm_button, Qt.AlignBottom)
         self.confirm_button.clicked.connect(self.confirm)
 
     def __repr__(self):
