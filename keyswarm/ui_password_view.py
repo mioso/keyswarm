@@ -9,6 +9,7 @@ import threading
 # pylint: disable=no-name-in-module
 from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
+from PySide2.QtCore import Qt
 # pylint: enable=no-name-in-module
 
 from .git_handler import GitError
@@ -63,6 +64,8 @@ class PasswordView(QGroupBox):
             return
         self.pass_file = pass_file_object
         password_field_label = QLabel('password')
+        password_field_label.setAlignment(Qt.AlignTop)
+        password_field_label.setMargin(5)
         self.password_field = QLineEdit()
         self.password_field.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         self.password_field.setEchoMode(QLineEdit.EchoMode.Password)
@@ -85,15 +88,19 @@ class PasswordView(QGroupBox):
         for key, value in self.pass_file.attributes:
             current_grid_view_row = self.layout().rowCount()
             additional_field_label = QLabel(key)
+            additional_field_label.setAlignment(Qt.AlignTop)
+            additional_field_label.setMargin(5)
             additional_field = QLineEdit()
             self.layout().addWidget(additional_field_label, current_grid_view_row + 1, 0)
             self.layout().addWidget(additional_field, current_grid_view_row + 1, 1)
             additional_field.setText(value)
             additional_field.setReadOnly(True)
         comment_browser_label = QLabel('comments')
+        comment_browser_label.setAlignment(Qt.AlignTop)
+        comment_browser_label.setMargin(5)
         comment_browser = QTextBrowser()
         self.layout().addWidget(comment_browser_label, self.layout().rowCount() + 1, 0)
-        self.layout().addWidget(comment_browser, self.layout().rowCount(), 1)
+        self.layout().addWidget(comment_browser, self.layout().rowCount() - 1, 1)
         comment_browser.setPlainText(self.pass_file.comments)
 
     def edit_password(self):
