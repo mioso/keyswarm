@@ -13,6 +13,13 @@ from sys import exit as sys_exit
 
 from .decoder import try_decode
 
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_gpg_debug_logging():
+    """
+    enable gpg debug logging
+    will log ANY gpg response including cyphertext
+    """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 @lru_cache(maxsize=1)
 def get_binary():
@@ -24,7 +31,7 @@ def get_binary():
 
     :return: the binary which returned version 2
     """
-    logger = logging.getLogger()
+    logger = logging.getLogger(__name__)
     regex = re_compile(r'gpg \(GnuPG\) ([1-2])\..*')
 
     gpg_subprocess = Popen(['gpg', '--version'], stdout=PIPE, stderr=None)

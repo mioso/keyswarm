@@ -4,16 +4,22 @@ a collection of ui helper functions
 
 import logging
 from sys import exit as sys_exit
+import threading
 
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import (QDialog, QVBoxLayout, QComboBox, QLabel, QFrame, QHBoxLayout,
                                QPushButton, QTabWidget, QFormLayout, QLineEdit)
+
+from .fail_always import Fail
 
 
 def clone_password_store_dialog():
     """
     Show a dialog to collect data required to clone the password store
     """
+    if threading.main_thread() != threading.current_thread():
+        Fail('clone_password_store_dialog')
+
     logger = logging.getLogger(__name__)
     dialog = QDialog()
     dialog.setWindowTitle('Repository URL')
@@ -71,6 +77,9 @@ def selection_dialog(list_of_options, window_title, label_text=None):
     :param label_text: Maybe(string) text of an optional label above the selection
     :return: Maybe(string) one element of the list of options or None
     """
+    if threading.main_thread() != threading.current_thread():
+        Fail('selection_dialog')
+
     logger = logging.getLogger(__name__)
     if not list_of_options:
         return None
@@ -110,6 +119,9 @@ def a_b_dialog(option_a, option_b, window_title, label_a=None, label_b=None, lab
     :param label_text: string optional text shown above the buttons
     :return: Maybe(string) the selected option or None if dialog window is closed
     """
+    if threading.main_thread() != threading.current_thread():
+        Fail('a_b_dialog')
+
     logger = logging.getLogger(__name__)
     logger.debug('a_b_dialog: (%r, %r, %r, %r, %r, %r)', option_a, option_b, window_title,
                  label_a, label_b, label_text)
@@ -164,6 +176,9 @@ def a_b_dialog_or_exit(option_a, option_b, window_title, label_a=None, label_b=N
     :return: string the selected option
     """
     # pylint: disable=too-many-arguments
+    if threading.main_thread() != threading.current_thread():
+        Fail('a_b_dialog_or_exit')
+
     result = None
     while not result:
         result = a_b_dialog(
@@ -179,6 +194,9 @@ def confirm_error(error_widget):
     Confirm an error message, removing the widget displaying it
     :param error_widget: QWidget outer most container of the error message
     """
+    if threading.main_thread() != threading.current_thread():
+        Fail('confirm_error')
+
     logger = logging.getLogger(__name__)
     logger.debug('confirm_error: %r', error_widget)
     error_widget.setParent(None)
@@ -188,6 +206,9 @@ def apply_error_style_to_widget(widget):
     """
     apply a stylesheet to the given QWidget indicating something is wrong with it
     """
+    if threading.main_thread() != threading.current_thread():
+        Fail('apply_error_style_to_widget')
+
     widget.setStyleSheet((
         'QWidget {'
         '  color: white;'
@@ -195,4 +216,10 @@ def apply_error_style_to_widget(widget):
         '}'))
     
 def clear_widget_style_sheet(widget):
+    """
+    remove any style from the widget
+    """
+    if threading.main_thread() != threading.current_thread():
+        Fail('clear_widget_style_sheet')
+
     widget.setStyleSheet('')

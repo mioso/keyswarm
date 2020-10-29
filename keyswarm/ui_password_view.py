@@ -4,15 +4,25 @@ and their metadata and to copy the password to clipboard
 """
 
 import logging
+import threading
 
 # pylint: disable=no-name-in-module
 from PySide2.QtGui import QFontDatabase
 from PySide2.QtWidgets import QGroupBox, QTextBrowser, QLabel, QLineEdit, QGridLayout, QPushButton
+from PySide2.QtCore import Qt
+# pylint: enable=no-name-in-module
 
 from .git_handler import GitError
 from .pass_clipboard import copy
 from .ui_password_dialog import PasswordDialog
 
+from .fail_always import Fail
+
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_password_view_debug_logging():
+    """ enable password view debug logging """
+    logging.getLogger(__name__).setLevel(logging.INFO)
 
 class PasswordView(QGroupBox):
     """
@@ -20,6 +30,10 @@ class PasswordView(QGroupBox):
     """
     def __init__(self, config, tree, pass_file_object=None):
         QGroupBox.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.__init__')
+
         self.setLayout(QGridLayout())
         welcome_message = QTextBrowser()
         welcome_message.setText('Leeloo Dallas - Multipass!')
@@ -42,11 +56,16 @@ class PasswordView(QGroupBox):
         :param pass_file_object: a PassFile
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.load_pass_file')
+
         self.clear()
         if not pass_file_object:
             return
         self.pass_file = pass_file_object
         password_field_label = QLabel('password')
+        password_field_label.setAlignment(Qt.AlignTop)
+        password_field_label.setMargin(5)
         self.password_field = QLineEdit()
         self.password_field.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         self.password_field.setEchoMode(QLineEdit.EchoMode.Password)
@@ -69,21 +88,28 @@ class PasswordView(QGroupBox):
         for key, value in self.pass_file.attributes:
             current_grid_view_row = self.layout().rowCount()
             additional_field_label = QLabel(key)
+            additional_field_label.setAlignment(Qt.AlignTop)
+            additional_field_label.setMargin(5)
             additional_field = QLineEdit()
             self.layout().addWidget(additional_field_label, current_grid_view_row + 1, 0)
             self.layout().addWidget(additional_field, current_grid_view_row + 1, 1)
             additional_field.setText(value)
             additional_field.setReadOnly(True)
         comment_browser_label = QLabel('comments')
+        comment_browser_label.setAlignment(Qt.AlignTop)
+        comment_browser_label.setMargin(5)
         comment_browser = QTextBrowser()
         self.layout().addWidget(comment_browser_label, self.layout().rowCount() + 1, 0)
-        self.layout().addWidget(comment_browser, self.layout().rowCount(), 1)
+        self.layout().addWidget(comment_browser, self.layout().rowCount() - 1, 1)
         comment_browser.setPlainText(self.pass_file.comments)
 
     def edit_password(self):
         """
         Displays an edit password dialog.
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.edit_password')
+
         logger = logging.getLogger(__name__)
         old_name = self.pass_file.name
         logger.debug('edit_password: old_name: "%s"', old_name)
@@ -117,6 +143,9 @@ class PasswordView(QGroupBox):
         """
         toggle the visibility of the password field
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.toggle_password_visibility')
+
         if self.password_field.echoMode() == QLineEdit.EchoMode.Password:
             self.password_field.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
@@ -127,6 +156,9 @@ class PasswordView(QGroupBox):
         deletes all widgets from the PasswordView
         :return: None
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('PasswordView.clear')
+
         self.pass_file = None
         self.password_field = None
         for i in reversed(range(self.layout().count())):

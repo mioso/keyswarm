@@ -1,47 +1,37 @@
-# -*- mode: python -*-
-
-from PyInstaller.utils.hooks import collect_data_files
-
-#x = collect_data_files('xxx')
-xx = []
-#counter = 0
-#for k, v in x:
-#	if counter == 0:
-#		xx.append((k, '.'))
-#		counter += 1
-#	else:
-#		try:
-#			xx.append((k, v.split('xxx\\')[1]))
-#		except:
-#			xx.append((k, v.split('xxx/')[1]))
-
-added_files = xx
-extra_imports = []
+# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
+
 a = Analysis(['kswarm'],
              pathex=['C:\\Users\\user\\keyswarm'],
-	     binaries=[],
-	     datas=added_files,
-	     hiddenimports=extra_imports,
-	     hookspath=[],
-	     excludes=[],
-	     win_no_prefer_redirects=False,
-	     win_private_assemblies=False,
-	     cipher=block_cipher,
-	     noarchive=False)
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+             binaries=[],
+             datas=[],
+             hiddenimports=[],
+             hookspath=[],
+             runtime_hooks=[],
+             excludes=[],
+             win_no_prefer_redirects=False,
+             win_private_assemblies=False,
+             cipher=block_cipher,
+             noarchive=False)
+pyz = PYZ(a.pure, a.zipped_data,
+             cipher=block_cipher)
 exe = EXE(pyz,
-	  a.scripts,
-	  a.binaries,
-	  a.zipfiles,
-	  a.datas,
-	  [],
-	  name='keyswarm',
-	  debug=True,
-	  bootloader_ignore_signals=False,
-	  strip=False,
-	  upx=True,
-	  runtime_tmpdir=None,
-	  console=True)
+          a.scripts,
+          [],
+          exclude_binaries=True,
+          name='keyswarm',
+          debug=False,
+          bootloader_ignore_signals=False,
+          strip=False,
+          upx=True,
+          console=True )
+coll = COLLECT(exe,
+               a.binaries,
+               a.zipfiles,
+               a.datas,
+               strip=False,
+               upx=True,
+               upx_exclude=[],
+               name='keyswarm')

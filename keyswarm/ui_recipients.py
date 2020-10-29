@@ -2,11 +2,22 @@
 this module provides a recipient list widget based on QLitsWidget
 """
 
+import logging
+import threading
+
 # pylint: disable=no-name-in-module
 from PySide2.QtWidgets import QListWidget, QListWidgetItem
 from PySide2.QtCore import Qt
+# pylint: enable=no-name-in-module
+
+from .fail_always import Fail
 from .gpg_handler import list_available_keys
 
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_recipient_view_debug_logging():
+    """ enable recipient view debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 # pylint: disable=too-few-public-methods
 class Recipient(QListWidgetItem):
@@ -16,6 +27,10 @@ class Recipient(QListWidgetItem):
     """
     def __init__(self, name, ischecked=False, enabled=True):
         QListWidgetItem.__init__(self)
+
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('Recipient.__init__')
+
         self.setText(name)
         self.setFlags(self.flags() | Qt.ItemIsUserCheckable)
         if ischecked:
@@ -37,6 +52,11 @@ class RecipientList(QListWidget):
     def __init__(self):
         QListWidget.__init__(self)
 
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('RecipientList.__init__')
+
+        self.setStyleSheet('QListView { qproperty-alternatingRowColors: true; }')
+
     def _add_recipients(self, list_of_recipient_data):
         for name, checked, enabled in list_of_recipient_data:
             self.addItem(Recipient(name, checked, enabled))
@@ -46,6 +66,9 @@ class RecipientList(QListWidget):
         replace all current items with all currently available keys and check the given list
         :param list_of_recipients: [str] items to check
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('RecipientList.refresh_recipients')
+
         self.clear()
         keys_available = list_available_keys()
         for key in keys_available:
@@ -61,6 +84,9 @@ class RecipientList(QListWidget):
         """
         return the text of all checked items
         """
+        if threading.main_thread() != threading.current_thread():
+            raise Fail('RecipientList.get_checked_item_names')
+
         list_of_key_ids_to_return = []
         for i in range(0, self.count()):
             item = self.item(i)

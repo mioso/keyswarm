@@ -9,6 +9,11 @@ from pathlib import Path
 from .gpg_handler import decrypt
 
 
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_file_format_debug_logging():
+    """ enable file format debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
+
 class PassFile():
     """
     A representation of a pass file.

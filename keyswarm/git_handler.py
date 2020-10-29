@@ -3,11 +3,19 @@ this module interacts with the git binary and provides
 pulling, branching, staging, committing and pushing
 """
 
+# pylint: disable=too-many-arguments
+
 from functools import lru_cache
 import logging
 from subprocess import call, PIPE, Popen
 
 from .decoder import try_decode
+
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_git_debug_logging():
+    """ enable git debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 class GitError(Exception):
     """
@@ -67,18 +75,6 @@ def get_binary():
     return 'git'
 
 
-def git_config_credential_helper():
-    """
-    sets `credential.helper` to `cache` in the global git config
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('`git config credential.helper cache`')
-    return_code = call([get_binary(), 'config', '--global', 'credential.helper', 'cache'])
-    logger.debug('return_code: %r', return_code)
-
-
-def _split_url(url):
-    logger = logging.getLogger(__name__)
     logger.debug('_split_url: (%r)', url)
     splits = url.split('://')
     logger.debug('_split_url: %r', splits)
@@ -91,31 +87,6 @@ def _split_url(url):
     host = splits[1].split('/')[0]
 
     return schema, host
-
-
-def cache_credentials(url, username, password):
-    """
-    writes the credentials for the host extraced from the given url to the git credential cache
-
-    :param url: string url of the remote host or the repository on the remote host
-        must contain schema, must contain host, must not contain userinfo
-        general url shape: `scheme:[//[userinfo@]host[:port]]path[?query][#fragment]`
-        accepted url shape: `scheme://host[:port][/[path][?query][#fragment]]`
-    :param username: string username
-    :param password: string password
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug('cache_credentials: (%r, %r, %r)', url, username, password)
-    protocol, host = _split_url(url)
-
-    input_ = f'protocol={protocol}\nhost={host}\nusername={username}\npassword={password}\n\n'
-    logger.debug('cache_credentials: %r', input_)
-    git_config_credential_helper()
-    git_process = Popen([get_binary(), 'credential-cache', 'store'],
-                        stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    stdout, stderr = git_process.communicate(input_.encode('utf-8'), timeout=2)
-    logger.debug('cache_credentials: stdout: %r', stdout)
-    logger.debug('cache_credentials: stderr: %r', stderr)
 
 
 def get_repository_root(directory_path):
@@ -202,6 +173,13 @@ def repository_config_has_user_data(repository_path):
 
 
 def repository_config_set_user_data(repository_path, user_name, user_email):
+    """
+    sets user.name and user.email for the git repository
+
+    :param repository_path: PathLike path of the repository
+    :param user_name: str users name handed to git config
+    :param user_email: str users email handed to git config
+    """
     logger = logging.getLogger(__name__)
     logger.debug('repository_config_set_user_data: (%r, %r, %r)',
                  repository_path, user_name, user_email)

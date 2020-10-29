@@ -15,6 +15,11 @@ from .pass_file_system import PassFile
 from .ui_filesystem_tree import PassUiFileSystemTree
 
 
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_search_debug_logging():
+    """ enable debug logging for the search module """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
+
 class PasswordSearch:
     """
     Provides metadata search over a PassUiFileSystemTree.
@@ -34,6 +39,9 @@ class PasswordSearch:
         self.__index = None
         self.__fields = ['name', 'path', 'comments']
         self.__create_search_index(file_system_tree)
+
+    def __repr__(self):
+        return f'PasswordSearch(doc_count={self.__index.doc_count()})'
 
     @staticmethod
     def __create_schema():
@@ -55,10 +63,14 @@ class PasswordSearch:
         attributes = set()
         documents = []
         node = file_system_tree.topLevelItem(0)
+        if not node:
+            logger.debug('PasswordSearch.__create_search_index:empty tree')
+            return
         child_index = 0
         child_count = node.childCount()
         stack = []
         logger.debug('create_search_index: start of iteration')
+        writer = self.__index.writer()
         while True:
             logger.debug('create_search_index: %r %r (%r/%r)',
                          list(map(lambda a: (a[0].name, a[1], a[2]), stack)),
@@ -167,6 +179,7 @@ class PasswordSearch:
         :param return: [dict]
         """
         logger = logging.getLogger(__name__)
+        logger.debug('search: self: %r', self)
         logger.debug('search: raw_query: %r %r %r %r', raw_query, glob_prefix, glob_suffix, fuzzy)
         if (glob_prefix or glob_suffix) and fuzzy:
             logger.warning('search: auto-glob and auto-fuzzy are mutually exclusive')

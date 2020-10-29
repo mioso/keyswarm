@@ -2,6 +2,11 @@
 provides an interface to the pass file system
 """
 
+# pylint: disable=too-many-arguments
+
+# reusing variable names causes confusion
+# pylint: disable=too-many-locals
+
 import logging
 from os import listdir, mkdir, rmdir, remove, walk
 from pathlib import Path
@@ -17,6 +22,11 @@ from .git_handler import (git_init, git_add, git_commit, git_clone, git_pull, gi
 from .name_filter import make_valid_branch_name
 from .pass_file_format_parser import PassFile
 
+
+logging.getLogger(__name__).setLevel(logging.INFO)
+def enable_file_system_debug_logging():
+    """ enable file system debug logging """
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 class PassFileSystem():
     """
@@ -47,9 +57,11 @@ class PassFileSystem():
         except (FileNotFoundError, ValueError, KeyError):
             self.git_credentials = {'url': None, 'username': None, 'password': None}
 
-        if (not no_git_override and
-                path_belongs_to_repository(password_store_root) and
-                repository_has_remote(password_store_root)):
+        self.__use_git_with_remote = (
+            not no_git_override and
+            path_belongs_to_repository(password_store_root) and
+            repository_has_remote(password_store_root))
+        if self.__use_git_with_remote:
             logger.info('PassFileSystem.__init__:git_pull')
             git_pull(repository_path=password_store_root,
                      http_url=self.git_credentials['url'],
@@ -483,7 +495,12 @@ class PassFileSystem():
 
 
     def refresh_password_store(self):
+        """ pulls from git remote and imports new gpg keys from repository """
         logger = logging.getLogger(__name__)
+        if not self.__use_git_with_remote:
+            logger.debug('refresh_password_store: no remote')
+            return
+
         logger.info('refresh_password_store:git_pull')
         git_pull(
             repository_path=self.password_store_root,
